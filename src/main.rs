@@ -13,6 +13,7 @@ const ARCTIS_NOVA_7P: u16 = 0x220a;
 
 const SUPPORTED_VENDORS: &[u16] = &[STEELSERIES];
 const SUPPORTED_PRODUCTS: &[u16] = &[ARCTIS_NOVA_7, ARCTIS_NOVA_7X, ARCTIS_NOVA_7P];
+const REQUIRED_INTERFACE: i32 = 3;
 
 const STATUS_BUF_SIZE: usize = 8;
 const READ_TIMEOUT: i32 = 500;
@@ -89,10 +90,12 @@ fn main() -> Result<()> {
         .device_list()
         .filter(|info| SUPPORTED_VENDORS.contains(&info.vendor_id()))
         .filter(|info| SUPPORTED_PRODUCTS.contains(&info.product_id()))
+        .filter(|info| info.interface_number() == REQUIRED_INTERFACE)
         .inspect(|info | {
             log::info!("Found {} {}", info.manufacturer_string().unwrap_or(""), info.product_string().unwrap_or(""));
         })
-        .next()
+        .collect::<Vec<_>>()
+        .first()
         .peek(|info| log::info!("Selected {} {}", info.manufacturer_string().unwrap_or(""), info.product_string().unwrap_or("")))
         .ok_or_else(|| anyhow!("No supported device found!"))?
         .open_device(&api)?;
