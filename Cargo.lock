@@ -40,6 +40,7 @@ name = "arctis_controller"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "com-policy-config",
  "env_logger",
  "hidapi",
  "log",
@@ -78,6 +79,15 @@ name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
+
+[[package]]
+name = "com-policy-config"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cde11ac63afc08dfd0cebbeff0e23ca2f90475e9e21f7d119e22c12c7d115828"
+dependencies = [
+ "windows",
+]
 
 [[package]]
 name = "env_logger"

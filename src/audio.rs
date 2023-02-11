@@ -1,23 +1,11 @@
-mod policy;
-
 use anyhow::Result;
 use windows::core::PCWSTR;
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Media::Audio::{DEVICE_STATE_ACTIVE, eConsole, eMultimedia, eRender, IMMDeviceEnumerator, MMDeviceEnumerator};
 use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, COINIT_MULTITHREADED, CoInitializeEx, CoUninitialize, STGM_READ};
-use crate::policy::{IPolicyConfig, PolicyConfigClient};
+use com_policy_config::{IPolicyConfig, PolicyConfigClient};
 
 fn main() -> Result<()>{
-    //unsafe {
-    //    let device_num = waveOutGetNumDevs();
-    //    println!("{}", device_num);
-    //    for i in 0..device_num {
-    //        let mut wave_caps = std::mem::zeroed();
-    //        assert_eq!(waveOutGetDevCapsW(i as usize, &mut wave_caps, std::mem::size_of::<WAVEOUTCAPSW>() as u32), MMSYSERR_NOERROR);
-    //        let buf = ptr::addr_of!(wave_caps.szPname).read_unaligned();
-    //        println!("{}", String::from_utf16_lossy(&buf));
-    //    }
-    //}
 
     unsafe {
         CoInitializeEx(None, COINIT_MULTITHREADED)?;
@@ -40,9 +28,10 @@ fn main() -> Result<()>{
             println!("Default Device: {}", name.Anonymous.Anonymous.Anonymous.pwszVal.display());
 
             let device_id = PCWSTR(selected_device.GetId()?.0);
+            println!("{}", device_id.display());
 
-            let policy_config: IPolicyConfig = CoCreateInstance(&PolicyConfigClient, None, CLSCTX_ALL)?;
-            policy_config.SetDefaultEndpoint(&device_id, eConsole)?;
+            //let policy_config: IPolicyConfig = CoCreateInstance(&PolicyConfigClient, None, CLSCTX_ALL)?;
+            //policy_config.SetDefaultEndpoint(&device_id, eConsole)?;
         }
 
         {
