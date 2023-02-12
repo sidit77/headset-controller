@@ -6,7 +6,8 @@ edition = "2021"
 [workspace]
 members = [
     ".",
-    "./lib/glutin-tao"
+    "./lib/glutin-tao",
+    "./lib/egui-tao"
 ]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -28,12 +29,11 @@ com-policy-config = "0.1"
 egui = "0.21"
 glutin = "0.30"
 glow = "0.12"
-egui-winit = "0.21"
-egui_glow = { version = "0.21", features=["winit"] }
-glutin-winit = "0.3"
+egui_glow = { version = "0.21" }
 raw-window-handle = "0.5"
-
+tao = "0.18.0"
 glutin-tao = {path = "./lib/glutin-tao"}
+egui-tao = {path = "./lib/egui-tao"}
 
 
 [dependencies.windows]
