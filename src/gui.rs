@@ -1,16 +1,20 @@
+mod renderer;
+
+use std::time::Instant;
 use egui::NumExt;
-use egui_winit::winit;
-use egui_winit::winit::dpi::LogicalSize;
-use egui_winit::winit::event_loop::EventLoopWindowTarget;
-use egui_winit::winit::window::{Window, WindowBuilder};
 use glutin::config::ConfigTemplateBuilder;
 use glutin::context::{ContextAttributesBuilder, PossiblyCurrentContext};
 use glutin::display::{Display, GetGlDisplay};
 use glutin::prelude::*;
 use glutin::surface::{Surface, WindowSurface};
-use glutin_winit::{ApiPrefence, DisplayBuilder, finalize_window};
 use log::LevelFilter;
 use raw_window_handle::HasRawWindowHandle;
+use tao::dpi::{LogicalSize, PhysicalSize};
+use tao::event::{Event, StartCause, WindowEvent};
+use tao::event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget};
+use tao::window::{Window, WindowBuilder};
+use glutin_tao::{ApiPrefence, DisplayBuilder, finalize_window};
+use crate::renderer::egui_glow_tao;
 
 /// The majority of `GlutinWindowContext` is taken from `eframe`
 struct GlutinWindowContext {
@@ -119,11 +123,11 @@ impl GlutinWindowContext {
         }
     }
 
-    fn window(&self) -> &winit::window::Window {
+    fn window(&self) -> &Window {
         &self.window
     }
 
-    fn resize(&self, physical_size: winit::dpi::PhysicalSize<u32>) {
+    fn resize(&self, physical_size: PhysicalSize<u32>) {
         self.gl_surface.resize(
             &self.gl_context,
             physical_size.width.try_into().unwrap(),
@@ -149,10 +153,10 @@ fn main() {
 
     let clear_color = [0.1, 0.1, 0.1];
 
-    let event_loop = winit::event_loop::EventLoopBuilder::with_user_event().build();
+    let event_loop = EventLoop::new();
     let (gl_window, gl) = create_display(&event_loop);
     let gl = std::sync::Arc::new(gl);
-    let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, gl.clone(), None);
+    let mut egui_glow = egui_glow_tao::EguiGlow::new(&event_loop, gl.clone(), None);
 
     let mut name = String::from("Simon");
     let mut age = 24;
@@ -178,16 +182,16 @@ fn main() {
             });
 
             *control_flow = if quit {
-                winit::event_loop::ControlFlow::Exit
+                ControlFlow::Exit
             } else if repaint_after.is_zero() {
                 gl_window.window().request_redraw();
-                winit::event_loop::ControlFlow::Poll
+                ControlFlow::Poll
             } else if let Some(repaint_after_instant) =
-                std::time::Instant::now().checked_add(repaint_after)
+                Instant::now().checked_add(repaint_after)
             {
-                winit::event_loop::ControlFlow::WaitUntil(repaint_after_instant)
+                ControlFlow::WaitUntil(repaint_after_instant)
             } else {
-                winit::event_loop::ControlFlow::Wait
+                ControlFlow::Wait
             };
 
             {
@@ -212,18 +216,16 @@ fn main() {
             // Platform-dependent event handlers to workaround a winit bug
             // See: https://github.com/rust-windowing/winit/issues/987
             // See: https://github.com/rust-windowing/winit/issues/1619
-            winit::event::Event::RedrawEventsCleared if cfg!(windows) => redraw(),
-            winit::event::Event::RedrawRequested(_) if !cfg!(windows) => redraw(),
-
-            winit::event::Event::WindowEvent { event, .. } => {
-                use winit::event::WindowEvent;
+            Event::RedrawEventsCleared if cfg!(windows) => redraw(),
+            Event::RedrawRequested(_) if !cfg!(windows) => redraw(),
+            Event::WindowEvent { event, .. } => {
                 if matches!(event, WindowEvent::CloseRequested | WindowEvent::Destroyed) {
-                    *control_flow = winit::event_loop::ControlFlow::Exit;
+                    *control_flow = ControlFlow::Exit;
                 }
 
-                if let winit::event::WindowEvent::Resized(physical_size) = &event {
+                if let WindowEvent::Resized(physical_size) = &event {
                     gl_window.resize(*physical_size);
-                } else if let winit::event::WindowEvent::ScaleFactorChanged {
+                } else if let WindowEvent::ScaleFactorChanged {
                     new_inner_size, ..
                 } = &event
                 {
@@ -236,10 +238,10 @@ fn main() {
                     gl_window.window().request_redraw();
                 }
             }
-            winit::event::Event::LoopDestroyed => {
+            Event::LoopDestroyed => {
                 egui_glow.destroy();
             }
-            winit::event::Event::NewEvents(winit::event::StartCause::ResumeTimeReached {
+            Event::NewEvents(StartCause::ResumeTimeReached {
                                                ..
                                            }) => {
                 gl_window.window().request_redraw();
@@ -250,9 +252,7 @@ fn main() {
     });
 }
 
-fn create_display(
-    event_loop: &winit::event_loop::EventLoopWindowTarget<()>,
-) -> (GlutinWindowContext, glow::Context) {
+fn create_display(event_loop: &EventLoopWindowTarget<()>, ) -> (GlutinWindowContext, glow::Context) {
     let glutin_window_context = unsafe { GlutinWindowContext::new(event_loop) };
     let gl = unsafe {
         glow::Context::from_loader_function(|s| {
