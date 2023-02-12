@@ -3,6 +3,10 @@ name = "arctis_controller"
 version = "0.1.0"
 edition = "2021"
 
+[profile.release]
+lto = true
+strip="symbols"
+
 [workspace]
 members = [
     ".",
@@ -10,7 +14,6 @@ members = [
     "./lib/egui-tao"
 ]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [[bin]]
 name="audio"
 path="src/audio.rs"
