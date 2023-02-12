@@ -34,7 +34,7 @@ glutin = "0.30"
 glow = "0.12"
 egui_glow = { version = "0.21" }
 raw-window-handle = "0.5"
-tao = "0.18.0"
+tao = { version = "0.18.0", features = ["tray"] }
 glutin-tao = {path = "./lib/glutin-tao"}
 egui-tao = {path = "./lib/egui-tao"}
 

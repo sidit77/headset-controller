@@ -5,6 +5,10 @@ use egui::Visuals;
 use log::LevelFilter;
 use tao::event::{Event, StartCause, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoop};
+use tao::menu::{ContextMenu, MenuItemAttributes};
+use tao::platform::run_return::EventLoopExtRunReturn;
+use tao::system_tray::SystemTrayBuilder;
+use tao::window::Icon;
 use crate::renderer::{create_display, egui_glow_tao};
 
 
@@ -17,7 +21,17 @@ fn main() {
 
     let clear_color = [0.1, 0.1, 0.1];
 
-    let event_loop = EventLoop::new();
+    let mut event_loop = EventLoop::new();
+
+    let icon = Icon::from_rgba(vec![0xff; 32 * 32 * 4], 32, 32).unwrap();
+    let mut tray_menu = ContextMenu::new();
+    let quit_item = tray_menu.add_item(MenuItemAttributes::new("Quit"));
+    let _tray = SystemTrayBuilder::new(icon, Some(tray_menu))
+        .with_tooltip("Connected")
+        .build(&event_loop)
+        .expect("Can not build system tray");
+
+
     let (gl_window, gl) = create_display(&event_loop);
     let gl = std::sync::Arc::new(gl);
     let mut egui_glow = egui_glow_tao::EguiGlow::new(&event_loop, gl.clone(), None);
@@ -26,7 +40,7 @@ fn main() {
     let mut name = String::from("Simon");
     let mut age = 24;
 
-    event_loop.run(move |event, _, control_flow| {
+    event_loop.run_return(move |event, _, control_flow| {
         let mut redraw = || {
             let repaint_after = egui_glow.run(gl_window.window(), |egui_ctx| {
                 egui::CentralPanel::default().show(egui_ctx, |ui| {
@@ -86,6 +100,11 @@ fn main() {
                 let event_response = egui_glow.on_event(&event);
                 if event_response.repaint {
                     gl_window.window().request_redraw();
+                }
+            }
+            Event::MenuEvent { menu_id, ..} => {
+                if menu_id == quit_item.clone().id() {
+                    *control_flow = ControlFlow::Exit;
                 }
             }
             Event::LoopDestroyed => {
