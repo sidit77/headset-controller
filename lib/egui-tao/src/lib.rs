@@ -78,6 +78,7 @@ pub struct State {
     pointer_touch_id: Option<u64>,
 
     /// track ime state
+    #[allow(dead_code)]
     input_method_editor_started: bool,
 
     #[cfg(feature = "accesskit")]
@@ -243,19 +244,20 @@ impl State {
                     | winit::event::TouchPhase::Ended
                     | winit::event::TouchPhase::Cancelled => egui_ctx.wants_pointer_input(),
                     winit::event::TouchPhase::Moved => egui_ctx.is_using_pointer(),
+                    _ => unreachable!()
                 };
                 EventResponse {
                     repaint: true,
                     consumed,
                 }
             }
-            WindowEvent::ReceivedCharacter(ch) => {
+            WindowEvent::ReceivedImeText(ch) => {
                 // On Mac we get here when the user presses Cmd-C (copy), ctrl-W, etc.
                 // We need to ignore these characters that are side-effects of commands.
                 let is_mac_cmd = cfg!(target_os = "macos")
                     && (self.egui_input.modifiers.ctrl || self.egui_input.modifiers.mac_cmd);
 
-                let consumed = if is_printable_char(*ch) && !is_mac_cmd {
+                let consumed = if ch.chars().all(is_printable_char) && !is_mac_cmd {
                     self.egui_input
                         .events
                         .push(egui::Event::Text(ch.to_string()));
@@ -268,48 +270,47 @@ impl State {
                     consumed,
                 }
             }
-            WindowEvent::Ime(ime) => {
-                // on Mac even Cmd-C is preessed during ime, a `c` is pushed to Preedit.
-                // So no need to check is_mac_cmd.
-                //
-                // How winit produce `Ime::Enabled` and `Ime::Disabled` differs in MacOS
-                // and Windows.
-                //
-                // - On Windows, before and after each Commit will produce an Enable/Disabled
-                // event.
-                // - On MacOS, only when user explicit enable/disable ime. No Disabled
-                // after Commit.
-                //
-                // We use input_method_editor_started to mannualy insert CompositionStart
-                // between Commits.
-                match ime {
-                    winit::event::Ime::Enabled | winit::event::Ime::Disabled => (),
-                    winit::event::Ime::Commit(text) => {
-                        self.input_method_editor_started = false;
-                        self.egui_input
-                            .events
-                            .push(egui::Event::CompositionEnd(text.clone()));
-                    }
-                    winit::event::Ime::Preedit(text, ..) => {
-                        if !self.input_method_editor_started {
-                            self.input_method_editor_started = true;
-                            self.egui_input.events.push(egui::Event::CompositionStart);
-                        }
-                        self.egui_input
-                            .events
-                            .push(egui::Event::CompositionUpdate(text.clone()));
-                    }
-                };
-
-                EventResponse {
-                    repaint: true,
-                    consumed: egui_ctx.wants_keyboard_input(),
-                }
-            }
-            WindowEvent::KeyboardInput { input, .. } => {
-                self.on_keyboard_input(input);
+            //WindowEvent::Ime(ime) => {
+            //    // on Mac even Cmd-C is preessed during ime, a `c` is pushed to Preedit.
+            //    // So no need to check is_mac_cmd.
+            //    //
+            //    // How winit produce `Ime::Enabled` and `Ime::Disabled` differs in MacOS
+            //    // and Windows.
+            //    //
+            //    // - On Windows, before and after each Commit will produce an Enable/Disabled
+            //    // event.
+            //    // - On MacOS, only when user explicit enable/disable ime. No Disabled
+            //    // after Commit.
+            //    //
+            //    // We use input_method_editor_started to mannualy insert CompositionStart
+            //    // between Commits.
+            //    match ime {
+            //        winit::event::Ime::Enabled | winit::event::Ime::Disabled => (),
+            //        winit::event::Ime::Commit(text) => {
+            //            self.input_method_editor_started = false;
+            //            self.egui_input
+            //                .events
+            //                .push(egui::Event::CompositionEnd(text.clone()));
+            //        }
+            //        winit::event::Ime::Preedit(text, ..) => {
+            //            if !self.input_method_editor_started {
+            //                self.input_method_editor_started = true;
+            //                self.egui_input.events.push(egui::Event::CompositionStart);
+            //            }
+            //            self.egui_input
+            //                .events
+            //                .push(egui::Event::CompositionUpdate(text.clone()));
+            //        }
+            //    };
+            //    EventResponse {
+            //        repaint: true,
+            //        consumed: egui_ctx.wants_keyboard_input(),
+            //    }
+            //}
+            WindowEvent::KeyboardInput { event, .. } => {
+                self.on_keyboard_input(event);
                 let consumed = egui_ctx.wants_keyboard_input()
-                    || input.virtual_keycode == Some(winit::event::VirtualKeyCode::Tab);
+                    || event.physical_key == winit::keyboard::KeyCode::Tab;
                 EventResponse {
                     repaint: true,
                     consumed,
@@ -354,14 +355,14 @@ impl State {
                 }
             }
             WindowEvent::ModifiersChanged(state) => {
-                self.egui_input.modifiers.alt = state.alt();
-                self.egui_input.modifiers.ctrl = state.ctrl();
-                self.egui_input.modifiers.shift = state.shift();
-                self.egui_input.modifiers.mac_cmd = cfg!(target_os = "macos") && state.logo();
+                self.egui_input.modifiers.alt = state.alt_key();
+                self.egui_input.modifiers.ctrl = state.control_key();
+                self.egui_input.modifiers.shift = state.shift_key();
+                self.egui_input.modifiers.mac_cmd = cfg!(target_os = "macos") && state.super_key();
                 self.egui_input.modifiers.command = if cfg!(target_os = "macos") {
-                    state.logo()
+                    state.super_key()
                 } else {
-                    state.ctrl()
+                    state.control_key()
                 };
                 EventResponse {
                     repaint: true,
@@ -373,7 +374,7 @@ impl State {
             WindowEvent::CloseRequested
             | WindowEvent::CursorEntered { .. }
             | WindowEvent::Destroyed
-            | WindowEvent::Occluded(_)
+            //| WindowEvent::Occluded(_)
             | WindowEvent::Resized(_)
             | WindowEvent::ThemeChanged(_)
             | WindowEvent::TouchpadPressure { .. } => EventResponse {
@@ -384,20 +385,27 @@ impl State {
             // Things we completely ignore:
             WindowEvent::AxisMotion { .. }
             | WindowEvent::Moved(_)
-            | WindowEvent::SmartMagnify { .. }
-            | WindowEvent::TouchpadRotate { .. } => EventResponse {
+            //| WindowEvent::SmartMagnify { .. }
+            //| WindowEvent::TouchpadRotate { .. }
+            => EventResponse {
                 repaint: false,
                 consumed: false,
             },
 
-            WindowEvent::TouchpadMagnify { delta, .. } => {
-                // Positive delta values indicate magnification (zooming in).
-                // Negative delta values indicate shrinking (zooming out).
-                let zoom_factor = (*delta as f32).exp();
-                self.egui_input.events.push(egui::Event::Zoom(zoom_factor));
+            //WindowEvent::TouchpadMagnify { delta, .. } => {
+            //    // Positive delta values indicate magnification (zooming in).
+            //    // Negative delta values indicate shrinking (zooming out).
+            //    let zoom_factor = (*delta as f32).exp();
+            //    self.egui_input.events.push(egui::Event::Zoom(zoom_factor));
+            //    EventResponse {
+            //        repaint: true,
+            //        consumed: egui_ctx.wants_pointer_input(),
+            //    }
+            //}
+            _ => {
                 EventResponse {
-                    repaint: true,
-                    consumed: egui_ctx.wants_pointer_input(),
+                    consumed: false,
+                    repaint: false,
                 }
             }
         }
@@ -496,6 +504,7 @@ impl State {
                 winit::event::TouchPhase::Moved => egui::TouchPhase::Move,
                 winit::event::TouchPhase::Ended => egui::TouchPhase::End,
                 winit::event::TouchPhase::Cancelled => egui::TouchPhase::Cancel,
+                _ => unreachable!()
             },
             pos: egui::pos2(
                 touch.location.x as f32 / self.pixels_per_point(),
@@ -508,6 +517,7 @@ impl State {
                     max_possible_force,
                     ..
                 }) => (force / max_possible_force) as f32,
+                Some(_) => unreachable!(),
                 None => 0_f32,
             },
         });
@@ -544,6 +554,7 @@ impl State {
                     self.pointer_pos_in_points = None;
                     self.egui_input.events.push(egui::Event::PointerGone);
                 }
+                _ => unreachable!()
             }
         }
     }
@@ -557,6 +568,7 @@ impl State {
             winit::event::MouseScrollDelta::PixelDelta(delta) => {
                 egui::vec2(delta.x as f32, delta.y as f32) / self.pixels_per_point()
             }
+            _ => unreachable!()
         };
 
         if self.egui_input.modifiers.ctrl || self.egui_input.modifiers.command {
@@ -574,8 +586,36 @@ impl State {
         }
     }
 
-    fn on_keyboard_input(&mut self, input: &winit::event::KeyboardInput) {
-        if let Some(keycode) = input.virtual_keycode {
+    fn on_keyboard_input(&mut self, input: &winit::event::KeyEvent) {
+        let keycode = input.physical_key;
+        let pressed = input.state == winit::event::ElementState::Pressed;
+
+        if pressed {
+            // VirtualKeyCode::Paste etc in winit are broken/untrustworthy,
+            // so we detect these things manually:
+            if is_cut_command(self.egui_input.modifiers, keycode) {
+                self.egui_input.events.push(egui::Event::Cut);
+            } else if is_copy_command(self.egui_input.modifiers, keycode) {
+                self.egui_input.events.push(egui::Event::Copy);
+            } else if is_paste_command(self.egui_input.modifiers, keycode) {
+                if let Some(contents) = self.clipboard.get() {
+                    self.egui_input
+                        .events
+                        .push(egui::Event::Paste(contents.replace("\r\n", "\n")));
+                }
+            }
+        }
+
+        if let Some(key) = translate_virtual_key_code(input.physical_key) {
+            self.egui_input.events.push(egui::Event::Key {
+                key,
+                pressed,
+                repeat: false,
+                modifiers: self.egui_input.modifiers,
+            });
+        }
+        /*
+        if let Some(keycode) = input.key_without_modifiers() {
             let pressed = input.state == winit::event::ElementState::Pressed;
 
             if pressed {
@@ -604,6 +644,7 @@ impl State {
                 });
             }
         }
+        */
     }
 
     /// Call with the output given by `egui`.
@@ -702,25 +743,25 @@ fn is_printable_char(chr: char) -> bool {
     !is_in_private_use_area && !chr.is_ascii_control()
 }
 
-fn is_cut_command(modifiers: egui::Modifiers, keycode: winit::event::VirtualKeyCode) -> bool {
-    (modifiers.command && keycode == winit::event::VirtualKeyCode::X)
+fn is_cut_command(modifiers: egui::Modifiers, keycode: winit::keyboard::KeyCode) -> bool {
+    (modifiers.command && keycode == winit::keyboard::KeyCode::KeyX)
         || (cfg!(target_os = "windows")
             && modifiers.shift
-            && keycode == winit::event::VirtualKeyCode::Delete)
+            && keycode == winit::keyboard::KeyCode::Delete)
 }
 
-fn is_copy_command(modifiers: egui::Modifiers, keycode: winit::event::VirtualKeyCode) -> bool {
-    (modifiers.command && keycode == winit::event::VirtualKeyCode::C)
+fn is_copy_command(modifiers: egui::Modifiers, keycode: winit::keyboard::KeyCode) -> bool {
+    (modifiers.command && keycode == winit::keyboard::KeyCode::KeyC)
         || (cfg!(target_os = "windows")
             && modifiers.ctrl
-            && keycode == winit::event::VirtualKeyCode::Insert)
+            && keycode == winit::keyboard::KeyCode::Insert)
 }
 
-fn is_paste_command(modifiers: egui::Modifiers, keycode: winit::event::VirtualKeyCode) -> bool {
-    (modifiers.command && keycode == winit::event::VirtualKeyCode::V)
+fn is_paste_command(modifiers: egui::Modifiers, keycode: winit::keyboard::KeyCode) -> bool {
+    (modifiers.command && keycode == winit::keyboard::KeyCode::KeyV)
         || (cfg!(target_os = "windows")
             && modifiers.shift
-            && keycode == winit::event::VirtualKeyCode::Insert)
+            && keycode == winit::keyboard::KeyCode::Insert)
 }
 
 fn translate_mouse_button(button: winit::event::MouseButton) -> Option<egui::PointerButton> {
@@ -731,23 +772,25 @@ fn translate_mouse_button(button: winit::event::MouseButton) -> Option<egui::Poi
         winit::event::MouseButton::Other(1) => Some(egui::PointerButton::Extra1),
         winit::event::MouseButton::Other(2) => Some(egui::PointerButton::Extra2),
         winit::event::MouseButton::Other(_) => None,
+        _ => unreachable!()
     }
 }
 
-fn translate_virtual_key_code(key: winit::event::VirtualKeyCode) -> Option<egui::Key> {
+fn translate_virtual_key_code(key: winit::keyboard::KeyCode) -> Option<egui::Key> {
     use egui::Key;
-    use winit::event::VirtualKeyCode;
+    //use winit::event::VirtualKeyCode;
+    use winit::keyboard::KeyCode as VirtualKeyCode;
 
     Some(match key {
-        VirtualKeyCode::Down => Key::ArrowDown,
-        VirtualKeyCode::Left => Key::ArrowLeft,
-        VirtualKeyCode::Right => Key::ArrowRight,
-        VirtualKeyCode::Up => Key::ArrowUp,
+        VirtualKeyCode::ArrowDown => Key::ArrowDown,
+        VirtualKeyCode::ArrowLeft => Key::ArrowLeft,
+        VirtualKeyCode::ArrowRight => Key::ArrowRight,
+        VirtualKeyCode::ArrowUp => Key::ArrowUp,
 
         VirtualKeyCode::Escape => Key::Escape,
         VirtualKeyCode::Tab => Key::Tab,
-        VirtualKeyCode::Back => Key::Backspace,
-        VirtualKeyCode::Return => Key::Enter,
+        VirtualKeyCode::Backspace => Key::Backspace,
+        VirtualKeyCode::Enter => Key::Enter,
         VirtualKeyCode::Space => Key::Space,
 
         VirtualKeyCode::Insert => Key::Insert,
@@ -760,45 +803,45 @@ fn translate_virtual_key_code(key: winit::event::VirtualKeyCode) -> Option<egui:
         VirtualKeyCode::Minus => Key::Minus,
         // Using Mac the key with the Plus sign on it is reported as the Equals key
         // (with both English and Swedish keyboard).
-        VirtualKeyCode::Equals => Key::PlusEquals,
+        VirtualKeyCode::Equal => Key::PlusEquals,
 
-        VirtualKeyCode::Key0 | VirtualKeyCode::Numpad0 => Key::Num0,
-        VirtualKeyCode::Key1 | VirtualKeyCode::Numpad1 => Key::Num1,
-        VirtualKeyCode::Key2 | VirtualKeyCode::Numpad2 => Key::Num2,
-        VirtualKeyCode::Key3 | VirtualKeyCode::Numpad3 => Key::Num3,
-        VirtualKeyCode::Key4 | VirtualKeyCode::Numpad4 => Key::Num4,
-        VirtualKeyCode::Key5 | VirtualKeyCode::Numpad5 => Key::Num5,
-        VirtualKeyCode::Key6 | VirtualKeyCode::Numpad6 => Key::Num6,
-        VirtualKeyCode::Key7 | VirtualKeyCode::Numpad7 => Key::Num7,
-        VirtualKeyCode::Key8 | VirtualKeyCode::Numpad8 => Key::Num8,
-        VirtualKeyCode::Key9 | VirtualKeyCode::Numpad9 => Key::Num9,
+        VirtualKeyCode::Digit0 | VirtualKeyCode::Numpad0 => Key::Num0,
+        VirtualKeyCode::Digit1 | VirtualKeyCode::Numpad1 => Key::Num1,
+        VirtualKeyCode::Digit2 | VirtualKeyCode::Numpad2 => Key::Num2,
+        VirtualKeyCode::Digit3 | VirtualKeyCode::Numpad3 => Key::Num3,
+        VirtualKeyCode::Digit4 | VirtualKeyCode::Numpad4 => Key::Num4,
+        VirtualKeyCode::Digit5 | VirtualKeyCode::Numpad5 => Key::Num5,
+        VirtualKeyCode::Digit6 | VirtualKeyCode::Numpad6 => Key::Num6,
+        VirtualKeyCode::Digit7 | VirtualKeyCode::Numpad7 => Key::Num7,
+        VirtualKeyCode::Digit8 | VirtualKeyCode::Numpad8 => Key::Num8,
+        VirtualKeyCode::Digit9 | VirtualKeyCode::Numpad9 => Key::Num9,
 
-        VirtualKeyCode::A => Key::A,
-        VirtualKeyCode::B => Key::B,
-        VirtualKeyCode::C => Key::C,
-        VirtualKeyCode::D => Key::D,
-        VirtualKeyCode::E => Key::E,
-        VirtualKeyCode::F => Key::F,
-        VirtualKeyCode::G => Key::G,
-        VirtualKeyCode::H => Key::H,
-        VirtualKeyCode::I => Key::I,
-        VirtualKeyCode::J => Key::J,
-        VirtualKeyCode::K => Key::K,
-        VirtualKeyCode::L => Key::L,
-        VirtualKeyCode::M => Key::M,
-        VirtualKeyCode::N => Key::N,
-        VirtualKeyCode::O => Key::O,
-        VirtualKeyCode::P => Key::P,
-        VirtualKeyCode::Q => Key::Q,
-        VirtualKeyCode::R => Key::R,
-        VirtualKeyCode::S => Key::S,
-        VirtualKeyCode::T => Key::T,
-        VirtualKeyCode::U => Key::U,
-        VirtualKeyCode::V => Key::V,
-        VirtualKeyCode::W => Key::W,
-        VirtualKeyCode::X => Key::X,
-        VirtualKeyCode::Y => Key::Y,
-        VirtualKeyCode::Z => Key::Z,
+        VirtualKeyCode::KeyA => Key::A,
+        VirtualKeyCode::KeyB => Key::B,
+        VirtualKeyCode::KeyC => Key::C,
+        VirtualKeyCode::KeyD => Key::D,
+        VirtualKeyCode::KeyE => Key::E,
+        VirtualKeyCode::KeyF => Key::F,
+        VirtualKeyCode::KeyG => Key::G,
+        VirtualKeyCode::KeyH => Key::H,
+        VirtualKeyCode::KeyI => Key::I,
+        VirtualKeyCode::KeyJ => Key::J,
+        VirtualKeyCode::KeyK => Key::K,
+        VirtualKeyCode::KeyL => Key::L,
+        VirtualKeyCode::KeyM => Key::M,
+        VirtualKeyCode::KeyN => Key::N,
+        VirtualKeyCode::KeyO => Key::O,
+        VirtualKeyCode::KeyP => Key::P,
+        VirtualKeyCode::KeyQ => Key::Q,
+        VirtualKeyCode::KeyR => Key::R,
+        VirtualKeyCode::KeyS => Key::S,
+        VirtualKeyCode::KeyT => Key::T,
+        VirtualKeyCode::KeyU => Key::U,
+        VirtualKeyCode::KeyV => Key::V,
+        VirtualKeyCode::KeyW => Key::W,
+        VirtualKeyCode::KeyX => Key::X,
+        VirtualKeyCode::KeyY => Key::Y,
+        VirtualKeyCode::KeyZ => Key::Z,
 
         VirtualKeyCode::F1 => Key::F1,
         VirtualKeyCode::F2 => Key::F2,
