@@ -1,4 +1,6 @@
 mod renderer;
+mod devices;
+mod util;
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -21,6 +23,10 @@ fn main() {
         .format_timestamp(None)
         .parse_default_env()
         .init();
+
+    let mut device = devices::find_device().unwrap();
+    device.poll().unwrap();
+    log::info!("{:?}", device.get_battery_status());
 
     let mut event_loop = EventLoop::new();
 
