@@ -27,7 +27,6 @@ anyhow = {version = "1.0", features=["backtrace"]}
 log = "0.4"
 env_logger = "0.10"
 hidapi = "2.1"
-com-policy-config = "0.1"
 
 egui = "0.21"
 glutin = "0.30"
@@ -38,8 +37,10 @@ tao = { version = "0.18.0", features = ["tray"] }
 glutin-tao = {path = "./lib/glutin-tao"}
 egui-tao = {path = "./lib/egui-tao"}
 
+[target."cfg(target_os = \"windows\")".dependencies]
+com-policy-config = "0.1"
 
-[dependencies.windows]
+[target."cfg(target_os = \"windows\")".dependencies.windows]
 version = "0.44.0"
 features = [
     "Win32_Foundation",
