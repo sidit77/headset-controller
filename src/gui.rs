@@ -45,20 +45,24 @@ fn main() {
 
         if window.as_mut().map(|w| w.handle_events(&event, control_flow, |egui_ctx| {
             egui::CentralPanel::default().show(egui_ctx, |ui| {
-                ui.heading("My egui Application");
-                ui.horizontal(|ui| {
-                    let name_label = ui.label("Your name: ");
-                    ui.text_edit_singleline(&mut name)
+                ui.vertical_centered_justified(|ui|{
+                    ui.heading("My egui Application");
+                    ui.horizontal(|ui| {
+                        let name_label = ui.label("Your name: ");
+                        ui.text_edit_singleline(&mut name)
                         .labelled_by(name_label.id);
+                    });
+                    ui.add(egui::Slider::new(&mut age, 0..=120).text("age"));
+                    if ui.button("Click each year").clicked() {
+                        age += 1;
+                    }
+                    ui.label(format!("Hello '{}', age {}", name, age));
                 });
-                ui.add(egui::Slider::new(&mut age, 0..=120).text("age"));
-                if ui.button("Click each year").clicked() {
-                    age += 1;
-                }
-                ui.label(format!("Hello '{}', age {}", name, age));
+                //ui.spinner();
             });
         })).unwrap_or(false) {
             window.take();
+            *control_flow = ControlFlow::Exit;
         }
 
         match event {
@@ -117,7 +121,6 @@ impl EguiWindow {
                 .map(ControlFlow::WaitUntil)
                 .unwrap_or(ControlFlow::Wait)
         };
-
         {
             let clear_color = [0.1, 0.1, 0.1];
             unsafe {
@@ -132,7 +135,8 @@ impl EguiWindow {
 
     fn handle_events(&mut self, event: &Event<()>, control_flow: &mut ControlFlow, gui: impl FnMut(&egui::Context)) -> bool{
         match event {
-            Event::RedrawRequested(_)  => self.redraw(control_flow, gui),
+            Event::RedrawEventsCleared if cfg!(windows) => self.redraw(control_flow, gui),
+            Event::RedrawRequested(_) if !cfg!(windows) => self.redraw(control_flow, gui),
             Event::WindowEvent { event, .. } => {
                 match &event {
                     WindowEvent::CloseRequested | WindowEvent::Destroyed => {
