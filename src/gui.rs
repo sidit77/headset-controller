@@ -49,8 +49,7 @@ fn main() {
     let mut next_device_poll = Instant::now();
     event_loop.run_return(move |event, event_loop, control_flow| {
         if next_device_poll <= Instant::now() {
-            next_device_poll = Instant::now() + Duration::from_secs(2);
-            log::info!("Polled device");
+            next_device_poll = Instant::now() + device.poll().unwrap();
         }
         let next_update = window
             .as_ref()
@@ -75,6 +74,9 @@ fn main() {
                         age += 1;
                     }
                     ui.label(format!("Hello '{}', age {}", name, age));
+                    ui.label(format!("Connected '{:?}'", device.is_connected()));
+                    ui.label(format!("Battery '{:?}'", device.get_battery_status()));
+                    ui.label(format!("Chatmix '{:?}'", device.get_chat_mix()));
                 });
                 //ui.spinner();
             });

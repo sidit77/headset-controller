@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use anyhow::{ensure, Result};
 use hidapi::{DeviceInfo, HidApi, HidDevice};
 use crate::devices::{BatteryLevel, BoxedDevice, ChatMix, Device, DeviceSupport};
@@ -25,6 +25,7 @@ const BATTERY_MIN: u8 =  0x00;
 #[derive(Debug)]
 pub struct ArcticsNova7 {
     device: HidDevice,
+    last_chat_mix_adjustment: Option<Instant>,
     connected: bool,
     battery: BatteryLevel,
     chat_mix: ChatMix
@@ -45,6 +46,7 @@ impl ArcticsNova7 {
         let device = device_info.open_device(api)?;
         Ok(Box::new(ArcticsNova7 {
             device,
+            last_chat_mix_adjustment: None,
             connected: false,
             battery: BatteryLevel::Unknown,
             chat_mix: ChatMix::default(),
@@ -63,11 +65,16 @@ impl Device for ArcticsNova7 {
         "ArctisNova"
     }
 
+    fn is_connected(&self) -> bool {
+        self.connected
+    }
+
     fn poll(&mut self) -> Result<Duration> {
         let mut report = [0u8; STATUS_BUF_SIZE];
         self.device.write(&[0x00, 0xb0])?;
         ensure!(self.device.read_timeout(&mut report, READ_TIMEOUT)? == STATUS_BUF_SIZE);
 
+        let prev_chat_mix = self.chat_mix;
         self.chat_mix = ChatMix {
             game: report[4],
             chat: report[5],
@@ -90,8 +97,24 @@ impl Device for ArcticsNova7 {
                 });
             }
         }
+        if self.chat_mix != prev_chat_mix {
+            if self.last_chat_mix_adjustment.is_none() {
+                log::trace!("Increase polling rate");
+            }
+            self.last_chat_mix_adjustment = Some(Instant::now());
+        }
+        if self.last_chat_mix_adjustment.map(|i| i.elapsed() > Duration::from_secs(1)).unwrap_or(false) {
+            self.last_chat_mix_adjustment = None;
+            log::trace!("Decrease polling rate");
+        }
 
-        Ok(Duration::from_secs(1))
+        Ok(match self.connected {
+            true => match self.last_chat_mix_adjustment.is_some() {
+                true => Duration::from_millis(250),
+                false => Duration::from_millis(1000)
+            }
+            false => Duration::from_secs(4)
+        })
     }
 
     fn get_battery_status(&self) -> Option<BatteryLevel> {

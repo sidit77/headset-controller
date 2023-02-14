@@ -39,16 +39,15 @@ pub trait Device {
 
     fn get_device_id(&self) -> u32;
     fn get_name(&self) -> &str;
+    fn is_connected(&self) -> bool;
     fn poll(&mut self) -> Result<Duration>;
 
     fn get_battery_status(&self) -> Option<BatteryLevel> {
         None
     }
-
     fn get_chat_mix(&self) -> Option<ChatMix> {
         None
     }
-
     fn get_side_tone(&self) -> Option<&dyn SideTone> {
         None
     }
