@@ -3,7 +3,7 @@ mod devices;
 mod util;
 
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use egui::Visuals;
 use glow::Context;
 use log::LevelFilter;
@@ -46,10 +46,22 @@ fn main() {
     let mut name = String::from("Simon");
     let mut age = 24;
 
+    let mut next_device_poll = Instant::now();
     event_loop.run_return(move |event, event_loop, control_flow| {
-        *control_flow = ControlFlow::Wait;
-
-        if window.as_mut().map(|w| w.handle_events(&event, control_flow, |egui_ctx| {
+        if next_device_poll <= Instant::now() {
+            next_device_poll = Instant::now() + Duration::from_secs(2);
+            log::info!("Polled device");
+        }
+        let next_update = window
+            .as_ref()
+            .and_then(|w|w.next_repaint)
+            .map(|t| t.min(next_device_poll))
+            .unwrap_or(next_device_poll);
+        *control_flow = match next_update <= Instant::now() {
+            true => ControlFlow::Poll,
+            false => ControlFlow::WaitUntil(next_update)
+        };
+        if window.as_mut().map(|w| w.handle_events(&event, |egui_ctx| {
             egui::CentralPanel::default().show(egui_ctx, |ui| {
                 ui.vertical_centered_justified(|ui|{
                     ui.heading("My egui Application");
@@ -110,23 +122,13 @@ impl EguiWindow {
             gl_window,
             gl,
             egui_glow,
-            next_repaint: None,
+            next_repaint: Some(Instant::now()),
         }
     }
 
-    fn redraw(&mut self, control_flow: &mut ControlFlow, gui: impl FnMut(&egui::Context)) {
-        self.next_repaint = None;
+    fn redraw(&mut self, gui: impl FnMut(&egui::Context)) {
         let repaint_after = self.egui_glow.run(self.gl_window.window(), gui);
-
-        *control_flow = if repaint_after.is_zero() {
-            self.gl_window.window().request_redraw();
-            ControlFlow::Poll
-        } else {
-            self.next_repaint = Instant::now().checked_add(repaint_after);
-            self.next_repaint
-                .map(ControlFlow::WaitUntil)
-                .unwrap_or(ControlFlow::Wait)
-        };
+        self.next_repaint = Instant::now().checked_add(repaint_after);
         {
             let clear_color = [0.1, 0.1, 0.1];
             unsafe {
@@ -139,10 +141,13 @@ impl EguiWindow {
         }
     }
 
-    fn handle_events(&mut self, event: &Event<()>, control_flow: &mut ControlFlow, gui: impl FnMut(&egui::Context)) -> bool{
+    fn handle_events(&mut self, event: &Event<()>, gui: impl FnMut(&egui::Context)) -> bool{
+        if self.next_repaint.map(|t| Instant::now().checked_duration_since(t)).is_some() {
+            self.gl_window.window().request_redraw();
+        }
         match event {
-            Event::RedrawEventsCleared if cfg!(windows) => self.redraw(control_flow, gui),
-            Event::RedrawRequested(_) if !cfg!(windows) => self.redraw(control_flow, gui),
+            Event::RedrawEventsCleared if cfg!(windows) => self.redraw(gui),
+            Event::RedrawRequested(_) if !cfg!(windows) => self.redraw(gui),
             Event::WindowEvent { event, .. } => {
                 match &event {
                     WindowEvent::CloseRequested | WindowEvent::Destroyed => {
@@ -159,11 +164,6 @@ impl EguiWindow {
 
                 let event_response = self.egui_glow.on_event(&event);
                 if event_response.repaint {
-                    self.gl_window.window().request_redraw();
-                }
-            }
-            Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
-                if self.next_repaint.map(|t| Instant::now().checked_duration_since(t)).is_some() {
                     self.gl_window.window().request_redraw();
                 }
             }
