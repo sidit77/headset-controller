@@ -25,6 +25,8 @@ const BATTERY_MIN: u8 =  0x00;
 #[derive(Debug)]
 pub struct ArcticsNova7 {
     device: HidDevice,
+    id: u32,
+    name: String,
     last_chat_mix_adjustment: Option<Instant>,
     connected: bool,
     battery: BatteryLevel,
@@ -44,8 +46,17 @@ impl ArcticsNova7 {
     fn open(device_info: &DeviceInfo, api: &HidApi) -> Result<BoxedDevice> {
         ensure!(Self::is_supported(device_info));
         let device = device_info.open_device(api)?;
+        let id = ((device_info.vendor_id() as u32) << 16) | (device_info.product_id() as u32);
+        let manufacturer = device_info
+            .manufacturer_string()
+            .unwrap_or("SteelSeries");
+        let product = device_info
+            .product_string()
+            .unwrap_or("Arctis Nova 7");
         Ok(Box::new(ArcticsNova7 {
             device,
+            id,
+            name: format!("{} {}", manufacturer, product),
             last_chat_mix_adjustment: None,
             connected: false,
             battery: BatteryLevel::Unknown,
@@ -58,11 +69,11 @@ impl ArcticsNova7 {
 impl Device for ArcticsNova7 {
 
     fn get_device_id(&self) -> u32 {
-        ((STEELSERIES as u32) << 16) | ARCTIS_NOVA_7X as u32
+        self.id
     }
 
     fn get_name(&self) -> &str {
-        "ArctisNova"
+        &self.name
     }
 
     fn is_connected(&self) -> bool {

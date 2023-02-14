@@ -23,6 +23,7 @@ anyhow = {version = "1.0", features=["backtrace"]}
 log = "0.4"
 env_logger = "0.10"
 hidapi = "2.1"
+notifica = "3.0"
 
 egui = "0.21"
 glutin = "0.30"

@@ -15,6 +15,7 @@ use tao::menu::{ContextMenu, MenuItemAttributes};
 use tao::platform::run_return::EventLoopExtRunReturn;
 use tao::system_tray::SystemTrayBuilder;
 use tao::window::Icon;
+use crate::devices::BatteryLevel;
 use crate::renderer::{create_display, GlutinWindowContext};
 use crate::renderer::egui_glow_tao::EguiGlow;
 
@@ -27,8 +28,6 @@ fn main() {
         .init();
 
     let mut device = devices::find_device().unwrap();
-    device.poll().unwrap();
-    log::info!("{:?}", device.get_battery_status());
 
     let mut event_loop = EventLoop::new();
 
@@ -36,8 +35,8 @@ fn main() {
     let mut tray_menu = ContextMenu::new();
     let open_item = tray_menu.add_item(MenuItemAttributes::new("Open"));
     let quit_item = tray_menu.add_item(MenuItemAttributes::new("Quit"));
-    let _tray = SystemTrayBuilder::new(icon, Some(tray_menu))
-        .with_tooltip("Connected")
+    let mut tray = SystemTrayBuilder::new(icon, Some(tray_menu))
+        .with_tooltip("Not Connected")
         .build(&event_loop)
         .expect("Can not build system tray");
 
@@ -45,13 +44,26 @@ fn main() {
     let mut window: Option<EguiWindow> = Some(EguiWindow::new(&event_loop));
 
 
-    let mut name = String::from("Simon");
-    let mut age = 24;
-
     let mut next_device_poll = Instant::now();
     event_loop.run_return(move |event, event_loop, control_flow| {
         if next_device_poll <= Instant::now() {
+            let (last_connected, last_battery) = (device.is_connected(), device.get_battery_status());
             next_device_poll = Instant::now() + device.poll().unwrap();
+
+            if last_connected != device.is_connected() {
+                notifica::notify(device.get_name(), match device.is_connected() {
+                    true => "Connected",
+                    false => "Disconnected"
+                }).unwrap();
+            }
+            if last_battery != device.get_battery_status() {
+                tray.set_tooltip(&match device.get_battery_status() {
+                    Some(BatteryLevel::Charging) => format!("{}\nBattery: Charging", device.get_name()),
+                    Some(BatteryLevel::Level(level)) => format!("{}\nBattery: {}%", device.get_name(), level),
+                    _ => format!("{}\nDisconnected", device.get_name())
+                });
+            }
+
         }
         let next_update = window
             .as_ref()
@@ -65,17 +77,7 @@ fn main() {
         if window.as_mut().map(|w| w.handle_events(&event, |egui_ctx| {
             egui::CentralPanel::default().show(egui_ctx, |ui| {
                 ui.vertical_centered_justified(|ui|{
-                    ui.heading("My egui Application");
-                    ui.horizontal(|ui| {
-                        let name_label = ui.label("Your name: ");
-                        ui.text_edit_singleline(&mut name)
-                            .labelled_by(name_label.id);
-                    });
-                    ui.add(egui::Slider::new(&mut age, 0..=120).text("age"));
-                    if ui.button("Click each year").clicked() {
-                        age += 1;
-                    }
-                    ui.label(format!("Hello '{}', age {}", name, age));
+                    ui.heading(device.get_name());
                     ui.label(format!("Connected '{:?}'", device.is_connected()));
                     ui.label(format!("Battery '{:?}'", device.get_battery_status()));
                     ui.label(format!("Chatmix '{:?}'", device.get_chat_mix()));
@@ -84,7 +86,9 @@ fn main() {
             });
         })).unwrap_or(false) {
             window.take();
-            *control_flow = ControlFlow::Exit;
+            if cfg!(debug_assertions) {
+                *control_flow = ControlFlow::Exit;
+            }
         }
 
         match event {
