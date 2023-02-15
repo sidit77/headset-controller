@@ -32,17 +32,17 @@ fn main() -> Result<()> {
         .init();
 
     let audio_manager = AudioManager::new()?;
-    for device in audio_manager.devices()? {
-        log::info!("{}", device?.name());
-    }
-    let monitor = audio_manager
+    let audio_devices = audio_manager
         .devices()?
         .filter_map(|d|d.log_ok("audio device errr"))
-        .find(|d| d.name().contains("24G2W1G5"))
-        .expect("Can not find device");
-    log::info!("monitor: {}", monitor.name());
-    log::info!("default: {}", audio_manager.get_default_device()?.name());
-    audio_manager.set_default_device(&monitor)?;
+        .collect::<Vec<_>>();
+    let mut default_device = {
+        let def = audio_manager.get_default_device()?;
+        audio_devices
+            .iter()
+            .position(|d| d == &def)
+            .unwrap()
+    };
 
     let mut device = devices::find_device().unwrap();
 
@@ -98,6 +98,13 @@ fn main() -> Result<()> {
                     ui.label(format!("Connected '{:?}'", device.is_connected()));
                     ui.label(format!("Battery '{:?}'", device.get_battery_status()));
                     ui.label(format!("Chatmix '{:?}'", device.get_chat_mix()));
+                    let result = egui::ComboBox::from_label("Default audio device")
+                        .width(300.0)
+                        .show_index(ui, &mut default_device, audio_devices.len(), |i| audio_devices[i].name().to_string());
+                    if result.changed() {
+                        let dev2 = audio_devices[default_device].clone();
+                        audio_manager.set_default_device(&dev2).unwrap();
+                    }
                 });
                 //ui.spinner();
             });
