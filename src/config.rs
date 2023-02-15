@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
 use directories_next::BaseDirs;
+use ron::ser::{PrettyConfig, to_string_pretty};
 
 #[derive(Default, Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum OutputSwitch {
@@ -63,7 +64,8 @@ impl Config {
     }
 
     pub fn save(&self) -> Result<()> {
-        Ok(std::fs::write(Self::path(), ron::to_string(self)?)?)
+        let pretty = PrettyConfig::new();
+        Ok(std::fs::write(Self::path(), to_string_pretty(self, pretty)?)?)
     }
 
     pub fn get_headset(&mut self, name: &str) -> &mut HeadsetConfig {
