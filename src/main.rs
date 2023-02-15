@@ -4,6 +4,7 @@ mod renderer;
 mod devices;
 mod util;
 mod audio;
+mod config;
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -18,6 +19,7 @@ use tao::platform::run_return::EventLoopExtRunReturn;
 use tao::system_tray::SystemTrayBuilder;
 use tao::window::Icon;
 use crate::audio::AudioManager;
+use crate::config::{Config, OutputSwitch};
 use crate::devices::BatteryLevel;
 use crate::renderer::{create_display, GlutinWindowContext};
 use crate::renderer::egui_glow_tao::EguiGlow;
@@ -29,6 +31,8 @@ fn main() -> Result<()> {
         .format_timestamp(None)
         .parse_default_env()
         .init();
+
+    let mut config = Config::load()?;
 
     let audio_manager = AudioManager::new()?;
     let audio_devices = audio_manager
@@ -101,6 +105,56 @@ fn main() -> Result<()> {
                         .show_index(ui, &mut default_device, audio_devices.len(), |i| audio_devices[i].name().to_string());
                     if result.changed() {
                         audio_manager.set_default_device(&audio_devices[default_device]).unwrap();
+                    }
+                    {
+                        let mut dirty = false;
+                        let headset = &mut config.get_headset(device.get_name()).switch_output;
+                        let mut enabled = *headset != OutputSwitch::Disabled;
+                        if ui.checkbox(&mut enabled, "Switch output on connect").changed() {
+                            if enabled {
+                                let default_audio = audio_manager
+                                    .get_default_device()
+                                    .map(|d| d.name().to_string())
+                                    .unwrap_or_else(|| String::from("<None>"));
+                                *headset = OutputSwitch::Enabled {
+                                    on_connect: default_audio.clone(),
+                                    on_disconnect: default_audio.clone(),
+                                };
+                            } else {
+                                *headset = OutputSwitch::Disabled;
+                            }
+                            dirty |= true;
+                        }
+                        if let OutputSwitch::Enabled { on_connect, on_disconnect } = headset {
+                            let mut selected = audio_devices
+                                .iter()
+                                .position(|d| d.name() == on_connect)
+                                .unwrap_or(0);
+                            let changed = egui::ComboBox::from_label("Connected:")
+                                .width(300.0)
+                                .show_index(ui, &mut selected, audio_devices.len(), |i| audio_devices[i].name().to_string())
+                                .changed();
+                            if changed {
+                                dirty |= true;
+                                *on_connect = audio_devices[selected].name().to_string();
+                            }
+
+                            let mut selected = audio_devices
+                                .iter()
+                                .position(|d| d.name() == on_disconnect)
+                                .unwrap_or(0);
+                            let changed = egui::ComboBox::from_label("Disconnected:")
+                                .width(300.0)
+                                .show_index(ui, &mut selected, audio_devices.len(), |i| audio_devices[i].name().to_string())
+                                .changed();
+                            if changed {
+                                dirty |= true;
+                                *on_disconnect = audio_devices[selected].name().to_string();
+                            }
+                        }
+                        if dirty {
+                            config.save().unwrap();
+                        }
                     }
                 });
                 //ui.spinner();

@@ -20,6 +20,9 @@ log = "0.4"
 env_logger = "0.10"
 hidapi = "2.1"
 notifica = "3.0"
+directories-next = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+ron = "0.8"
 
 egui = "0.21"
 glutin = "0.30"
