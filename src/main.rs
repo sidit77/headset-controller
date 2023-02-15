@@ -3,9 +3,11 @@
 mod renderer;
 mod devices;
 mod util;
+mod audio;
 
 use std::sync::Arc;
 use std::time::Instant;
+use anyhow::Result;
 use egui::Visuals;
 use glow::Context;
 use log::LevelFilter;
@@ -15,17 +17,32 @@ use tao::menu::{ContextMenu, MenuItemAttributes};
 use tao::platform::run_return::EventLoopExtRunReturn;
 use tao::system_tray::SystemTrayBuilder;
 use tao::window::Icon;
+use crate::audio::AudioManager;
 use crate::devices::BatteryLevel;
 use crate::renderer::{create_display, GlutinWindowContext};
 use crate::renderer::egui_glow_tao::EguiGlow;
+use crate::util::LogResultExt;
 
 
-fn main() {
+fn main() -> Result<()> {
     env_logger::builder()
         .filter_level(LevelFilter::Trace)
         .format_timestamp(None)
         .parse_default_env()
         .init();
+
+    let audio_manager = AudioManager::new()?;
+    for device in audio_manager.devices()? {
+        log::info!("{}", device?.name());
+    }
+    let monitor = audio_manager
+        .devices()?
+        .filter_map(|d|d.log_ok("audio device errr"))
+        .find(|d| d.name().contains("24G2W1G5"))
+        .expect("Can not find device");
+    log::info!("monitor: {}", monitor.name());
+    log::info!("default: {}", audio_manager.get_default_device()?.name());
+    audio_manager.set_default_device(&monitor)?;
 
     let mut device = devices::find_device().unwrap();
 
@@ -108,6 +125,7 @@ fn main() {
             _ => (),
         }
     });
+    Ok(())
 }
 
 struct EguiWindow {

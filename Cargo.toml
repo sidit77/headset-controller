@@ -16,7 +16,7 @@ members = [
 
 [[bin]]
 name="audio"
-path="src/audio.rs"
+path= "src/audio_test.rs"
 
 [dependencies]
 anyhow = {version = "1.0", features=["backtrace"]}

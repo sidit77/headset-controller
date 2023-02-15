@@ -9,6 +9,7 @@ use glutin::surface::{Surface, WindowSurface};
 use raw_window_handle::HasRawWindowHandle;
 use tao::dpi::{LogicalSize, PhysicalSize};
 use tao::event_loop::EventLoopWindowTarget;
+use tao::platform::windows::WindowBuilderExtWindows;
 use tao::window::{Window, WindowBuilder};
 use glutin_tao::{ApiPrefence, DisplayBuilder, finalize_window};
 
@@ -28,6 +29,7 @@ impl GlutinWindowContext {
     unsafe fn new(event_loop: &EventLoopWindowTarget<()>) -> Self {
         let winit_window_builder = WindowBuilder::new()
             .with_resizable(true)
+            .with_drag_and_drop(false)
             .with_inner_size(LogicalSize {
                 width: 800.0,
                 height: 600.0,

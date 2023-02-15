@@ -1,5 +1,19 @@
 use std::fmt::Display;
 
+pub trait CopySlice<T> {
+    fn cloned(self) -> Box<[T]>;
+}
+
+impl<T: Clone> CopySlice<T> for &[T] {
+    fn cloned(self) -> Box<[T]> {
+        self
+            .iter()
+            .cloned()
+            .collect::<Vec<T>>()
+            .into_boxed_slice()
+    }
+}
+
 pub trait LogResultExt<T> {
     fn log_ok(self, msg: &str) -> Option<T>;
 }
