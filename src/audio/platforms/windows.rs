@@ -1,11 +1,12 @@
 use std::iter::FusedIterator;
-use anyhow::{Context, Result};
+use anyhow::{Result};
 use com_policy_config::{IPolicyConfig, PolicyConfigClient};
-use windows::core::PCWSTR;
+use widestring::{U16CString};
+use windows::core::{HRESULT, PCWSTR, PWSTR};
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
+use windows::Win32::Foundation::ERROR_NOT_FOUND;
 use windows::Win32::Media::Audio::{DEVICE_STATE_ACTIVE, eConsole, eRender, IMMDevice, IMMDeviceCollection, IMMDeviceEnumerator, MMDeviceEnumerator};
-use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, COINIT_MULTITHREADED, CoInitializeEx, CoTaskMemFree, CoUninitialize, STGM_READ};
-use crate::util::CopySlice;
+use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, COINIT_MULTITHREADED, CoInitializeEx, CoTaskMemFree, CoUninitialize, STGM_READ, VT_LPWSTR};
 
 #[derive(Debug, Clone)]
 pub struct AudioManager {
@@ -22,37 +23,6 @@ impl AudioManager {
             let enumerator: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
             let policy_config: IPolicyConfig = CoCreateInstance(&PolicyConfigClient, None, CLSCTX_ALL)?;
 
-            /*
-            println!("All Devices:");
-            let device_collection = enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)?;
-            for i in 0..device_collection.GetCount()? {
-                let device = device_collection.Item(i)?;
-                let property_store = device.OpenPropertyStore(STGM_READ)?;
-                let name = property_store.GetValue(&PKEY_Device_FriendlyName)?;
-                println!("  {}", name.Anonymous.Anonymous.Anonymous.pwszVal.display());
-            }
-
-            {
-                let selected_device = device_collection.Item(0)?;
-                let property_store = selected_device.OpenPropertyStore(STGM_READ)?;
-                let name = property_store.GetValue(&PKEY_Device_FriendlyName)?;
-                println!("Default Device: {}", name.Anonymous.Anonymous.Anonymous.pwszVal.display());
-
-                let device_id = PCWSTR(selected_device.GetId()?.0);
-                println!("{}", device_id.display());
-
-                //let policy_config: IPolicyConfig = CoCreateInstance(&PolicyConfigClient, None, CLSCTX_ALL)?;
-                //policy_config.SetDefaultEndpoint(&device_id, eConsole)?;
-            }
-
-            {
-                let default_device = enumerator.GetDefaultAudioEndpoint(eRender, eMultimedia)?;
-                let property_store = default_device.OpenPropertyStore(STGM_READ)?;
-                let name = property_store.GetValue(&PKEY_Device_FriendlyName)?;
-                println!("Default Device: {}", name.Anonymous.Anonymous.Anonymous.pwszVal.display());
-            }
-
-            */
             Ok(Self {
                 enumerator,
                 policy_config,
@@ -60,22 +30,27 @@ impl AudioManager {
         }
     }
 
-    pub fn devices(&self) -> Result<impl Iterator<Item=Result<AudioDevice>>> {
+    pub fn devices(&self) -> impl Iterator<Item=AudioDevice> {
         unsafe {
-            let device_collection = self.enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)?;
-            let count = device_collection.GetCount()?;
-            Ok(AudioDeviceIterator {
+            let device_collection = self.enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)
+                .expect("Unexpected error");
+            let count = device_collection.GetCount()
+                .expect("Unexpected error");
+            AudioDeviceIterator {
                 device_collection,
                 count,
                 index: 0,
-            })
+            }
         }
     }
 
-    pub fn get_default_device(&self) -> Result<AudioDevice> {
+    pub fn get_default_device(&self) -> Option<AudioDevice> {
         unsafe {
-            let device = self.enumerator.GetDefaultAudioEndpoint(eRender, eConsole)?;
-            Ok(AudioDevice::new(device)?)
+            match self.enumerator.GetDefaultAudioEndpoint(eRender, eConsole) {
+                Ok(dev) => Some(AudioDevice::new(dev)),
+                Err(err) if err.code() == HRESULT::from(ERROR_NOT_FOUND) => None,
+                Err(err) => Err(err).expect("Unexpected error")
+            }
         }
     }
 
@@ -104,15 +79,15 @@ struct AudioDeviceIterator {
 }
 
 impl Iterator for AudioDeviceIterator {
-    type Item = Result<AudioDevice>;
+    type Item = AudioDevice;
 
     fn next(&mut self) -> Option<Self::Item> {
         unsafe {
             if self.index < self.count {
                 let item = self.device_collection.Item(self.index)
-                    .context("Error retrieving item");
+                    .expect("Unexpected error");
                 self.index += 1;
-                Some(item.and_then(AudioDevice::new))
+                Some(AudioDevice::new(item))
             } else {
                 None
             }
@@ -131,28 +106,34 @@ impl FusedIterator for AudioDeviceIterator {}
 #[derive(Debug, Clone)]
 pub struct AudioDevice {
     name: String,
-    id: Box<[u16]>
+    id: U16CString
 }
 
 impl AudioDevice {
 
-    fn new(device: IMMDevice) -> Result<Self> {
+    fn new(device: IMMDevice) -> Self {
         unsafe {
             let id = {
-                let ptr = device.GetId()?;
-                let id = ptr.as_wide().cloned();
+                let ptr = device.GetId()
+                    .expect("Unexpected error");
+                let id = U16CString::from_ptr_str(ptr.as_ptr());
                 CoTaskMemFree(Some(ptr.as_ptr() as _));
                 id
             };
             let name = {
-                let property_store = device.OpenPropertyStore(STGM_READ)?;
-                let name = property_store.GetValue(&PKEY_Device_FriendlyName)?;
-                name.Anonymous.Anonymous.Anonymous.pwszVal.to_string()?
+                let property_store = device.OpenPropertyStore(STGM_READ)
+                    .expect("Unexpected error");
+                let prop = property_store.GetValue(&PKEY_Device_FriendlyName)
+                    .expect("Unexpected error");
+                let dynamic_type = prop.Anonymous.Anonymous;
+                assert_eq!(dynamic_type.vt, VT_LPWSTR);
+                let name: PWSTR = dynamic_type.Anonymous.pwszVal;
+                String::from_utf16_lossy(name.as_wide())
             };
-            Ok(Self{
+            Self{
                 name,
                 id,
-            })
+            }
         }
     }
 

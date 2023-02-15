@@ -210,6 +210,7 @@ dependencies = [
  "notifica",
  "raw-window-handle",
  "tao",
+ "widestring",
  "windows 0.44.0",
 ]
 
@@ -3234,6 +3235,12 @@ checksum = "d743fdedc5c64377b5fc2bc036b01c7fd642205a0d96356034ae3404d49eb7fb"
 dependencies = [
  "cc",
 ]
+
+[[package]]
+name = "widestring"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "653f141f39ec16bba3c5abe400a0c60da7468261cc2cbf36805022876bc721a8"
 
 [[package]]
 name = "winapi"

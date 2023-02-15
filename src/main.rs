@@ -21,7 +21,6 @@ use crate::audio::AudioManager;
 use crate::devices::BatteryLevel;
 use crate::renderer::{create_display, GlutinWindowContext};
 use crate::renderer::egui_glow_tao::EguiGlow;
-use crate::util::LogResultExt;
 
 
 fn main() -> Result<()> {
@@ -33,11 +32,10 @@ fn main() -> Result<()> {
 
     let audio_manager = AudioManager::new()?;
     let audio_devices = audio_manager
-        .devices()?
-        .filter_map(|d|d.log_ok("audio device errr"))
+        .devices()
         .collect::<Vec<_>>();
     let mut default_device = {
-        let def = audio_manager.get_default_device()?;
+        let def = audio_manager.get_default_device().unwrap();
         audio_devices
             .iter()
             .position(|d| d == &def)
@@ -102,8 +100,7 @@ fn main() -> Result<()> {
                         .width(300.0)
                         .show_index(ui, &mut default_device, audio_devices.len(), |i| audio_devices[i].name().to_string());
                     if result.changed() {
-                        let dev2 = audio_devices[default_device].clone();
-                        audio_manager.set_default_device(&dev2).unwrap();
+                        audio_manager.set_default_device(&audio_devices[default_device]).unwrap();
                     }
                 });
                 //ui.spinner();

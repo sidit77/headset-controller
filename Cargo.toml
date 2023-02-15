@@ -32,6 +32,7 @@ egui-tao = {path = "./lib/egui-tao"}
 
 [target."cfg(target_os = \"windows\")".dependencies]
 com-policy-config = "0.1"
+widestring = "1.0"
 
 [target."cfg(target_os = \"windows\")".dependencies.windows]
 version = "0.44.0"
