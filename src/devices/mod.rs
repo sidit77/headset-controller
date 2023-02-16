@@ -1,5 +1,6 @@
 mod arctis_nova_7;
 
+use std::fmt::{Display, Formatter};
 use std::time::Duration;
 use anyhow::{anyhow, Result};
 use hidapi::{DeviceInfo, HidApi};
@@ -12,6 +13,16 @@ pub enum BatteryLevel {
     Unknown,
     Charging,
     Level(u8)
+}
+
+impl Display for BatteryLevel {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BatteryLevel::Unknown => write!(f, "Error"),
+            BatteryLevel::Charging => write!(f, "Charging"),
+            BatteryLevel::Level(level) => write!(f, "{}%", level),
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -35,10 +46,23 @@ pub trait SideTone {
     fn set_level(&self, level: u8);
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct Info {
+    pub manufacturer: String,
+    pub product: String,
+    pub name: String,
+    pub id: u32
+}
+
+impl Display for Info {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.name)
+    }
+}
+
 pub trait Device {
 
-    fn get_device_id(&self) -> u32;
-    fn get_name(&self) -> &str;
+    fn get_info(&self) -> &Info;
     fn is_connected(&self) -> bool;
     fn poll(&mut self) -> Result<Duration>;
 

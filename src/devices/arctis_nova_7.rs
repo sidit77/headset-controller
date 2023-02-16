@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 use anyhow::{ensure, Result};
 use hidapi::{DeviceInfo, HidApi, HidDevice};
-use crate::devices::{BatteryLevel, BoxedDevice, ChatMix, Device, DeviceSupport};
+use crate::devices::{BatteryLevel, BoxedDevice, ChatMix, Device, DeviceSupport, Info};
 
 const STEELSERIES: u16 = 0x1038;
 
@@ -25,8 +25,7 @@ const BATTERY_MIN: u8 =  0x00;
 #[derive(Debug)]
 pub struct ArcticsNova7 {
     device: HidDevice,
-    id: u32,
-    name: String,
+    name: Info,
     last_chat_mix_adjustment: Option<Instant>,
     connected: bool,
     battery: BatteryLevel,
@@ -49,14 +48,21 @@ impl ArcticsNova7 {
         let id = ((device_info.vendor_id() as u32) << 16) | (device_info.product_id() as u32);
         let manufacturer = device_info
             .manufacturer_string()
-            .unwrap_or("SteelSeries");
+            .unwrap_or("SteelSeries")
+            .to_string();
         let product = device_info
             .product_string()
-            .unwrap_or("Arctis Nova 7");
+            .unwrap_or("Arctis Nova 7")
+            .to_string();
+        let name = format!("{} {}", manufacturer, product);
         Ok(Box::new(ArcticsNova7 {
             device,
-            id,
-            name: format!("{} {}", manufacturer, product),
+            name: Info {
+                manufacturer,
+                product,
+                name,
+                id,
+            },
             last_chat_mix_adjustment: None,
             connected: false,
             battery: BatteryLevel::Unknown,
@@ -68,11 +74,7 @@ impl ArcticsNova7 {
 
 impl Device for ArcticsNova7 {
 
-    fn get_device_id(&self) -> u32 {
-        self.id
-    }
-
-    fn get_name(&self) -> &str {
+    fn get_info(&self) -> &Info {
         &self.name
     }
 

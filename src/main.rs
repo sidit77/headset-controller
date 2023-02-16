@@ -11,7 +11,8 @@ mod notification;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use anyhow::Result;
-use egui::Visuals;
+use egui::panel::Side;
+use egui::{RichText, TextStyle, Visuals, Widget};
 use glow::Context;
 use log::LevelFilter;
 use tao::event::{Event, WindowEvent};
@@ -67,18 +68,18 @@ fn main() -> Result<()> {
             next_device_poll = Instant::now() + device.poll().unwrap();
 
             if last_connected != device.is_connected() {
-                notification::notify(device.get_name(), match device.is_connected() {
+                notification::notify(&device.get_info().name, match device.is_connected() {
                     true => "Connected",
                     false => "Disconnected"
                 }, Duration::from_secs(2)).log_ok("Can not create notification");
-                let switch = &config.get_headset(device.get_name()).switch_output;
+                let switch = &config.get_headset(&device.get_info().name).switch_output;
                 apply_audio_switch(device.is_connected(), switch, &audio_manager);
             }
             if last_battery != device.get_battery_status() {
                 tray.set_tooltip(&match device.get_battery_status() {
-                    Some(BatteryLevel::Charging) => format!("{}\nBattery: Charging", device.get_name()),
-                    Some(BatteryLevel::Level(level)) => format!("{}\nBattery: {}%", device.get_name(), level),
-                    _ => format!("{}\nDisconnected", device.get_name())
+                    Some(BatteryLevel::Charging) => format!("{}\nBattery: Charging", device.get_info()),
+                    Some(BatteryLevel::Level(level)) => format!("{}\nBattery: {}%", device.get_info(), level),
+                    _ => format!("{}\nDisconnected", device.get_info())
                 });
             }
 
@@ -93,26 +94,72 @@ fn main() -> Result<()> {
             false => ControlFlow::WaitUntil(next_update)
         };
         if window.as_mut().map(|w| w.handle_events(&event, |egui_ctx| {
-            egui::CentralPanel::default().show(egui_ctx, |ui| {
-                ui.heading(device.get_name());
-                ui.label(format!("Connected '{:?}'", device.is_connected()));
-                ui.label(format!("Battery '{:?}'", device.get_battery_status()));
-                ui.label(format!("Chatmix '{:?}'", device.get_chat_mix()));
-                let mut dirty = false;
-                {
-                    let switch = &mut config.get_headset(device.get_name()).switch_output;
-                    if audio_output_switch_selector(ui, switch, &audio_devices, || audio_manager.get_default_device()) {
-                        dirty |= true;
-                        if device.is_connected() {
-                            apply_audio_switch(true, switch, &audio_manager);
+            let mut dirty = false;
+            let headset = config.get_headset(&device.get_info().name);
+            egui::SidePanel::new(Side::Left, "Profiles")
+                .resizable(true)
+                .width_range(100.0..=400.0)
+                .show(egui_ctx, |ui| {
+                    ui.style_mut().text_styles.get_mut(&TextStyle::Body).unwrap().size = 14.0;
+                    ui.label(RichText::from(&device.get_info().manufacturer)
+                        .heading()
+                        .size(30.0));
+                    ui.label(RichText::from(&device.get_info().product)
+                        .heading()
+                        .size(20.0));
+                    ui.separator();
+                    if device.is_connected() {
+                        if let Some(battery) = device.get_battery_status() {
+                            ui.label(format!("Battery: {}", battery));
                         }
+                        ui.add_space(10.0);
+                        if let Some(mix) = device.get_chat_mix() {
+                            ui.label("Chat Mix:");
+                            egui::ProgressBar::new(mix.chat as f32 / 100.0)
+                                .text("Chat")
+                                .ui(ui);
+                            egui::ProgressBar::new(mix.game as f32 / 100.0)
+                                .text("Game")
+                                .ui(ui);
+                        }
+                    } else {
+                        ui.label("Not Connected");
                     }
-                }
-                if dirty {
-                    config.save().unwrap();
-                }
+                    ui.separator();
+                    ui.heading("Profiles");
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false; 2])
+                        .show(ui, |ui| {
+                            for i in 0..10 {
+                                ui.label(format!("Profile {}", i));
+                            }
+                        });
+                });
+            egui::CentralPanel::default().show(egui_ctx, |ui| {
+                ui.style_mut().text_styles.get_mut(&TextStyle::Heading).unwrap().size = 25.0;
+                ui.style_mut().text_styles.get_mut(&TextStyle::Body).unwrap().size = 14.0;
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false; 2])
+                    .show(ui, |ui| {
+                        ui.heading("General");
+                        ui.add_space(7.0);
+                        {
+                            let switch = &mut headset.switch_output;
+                            if audio_output_switch_selector(ui, switch, &audio_devices, || audio_manager.get_default_device()) {
+                                dirty |= true;
+                                if device.is_connected() {
+                                    apply_audio_switch(true, switch, &audio_manager);
+                                }
+                            }
+                        }
+                        ui.add_space(20.0);
+                        ui.heading("Profile");
+                    });
                 //ui.spinner();
             });
+            if dirty {
+                config.save().unwrap();
+            }
         })).unwrap_or(false) {
             window.take();
             if cfg!(debug_assertions) {
