@@ -5,6 +5,7 @@ mod devices;
 mod util;
 mod audio;
 mod config;
+mod ui;
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -23,6 +24,8 @@ use crate::config::{Config, OutputSwitch};
 use crate::devices::BatteryLevel;
 use crate::renderer::{create_display, GlutinWindowContext};
 use crate::renderer::egui_glow_tao::EguiGlow;
+use crate::ui::{audio_output_switch_selector};
+use crate::util::LogResultExt;
 
 
 fn main() -> Result<()> {
@@ -74,6 +77,8 @@ fn main() -> Result<()> {
                     true => "Connected",
                     false => "Disconnected"
                 }).unwrap();
+                let switch = &config.get_headset(device.get_name()).switch_output;
+                apply_audio_switch(device.is_connected(), switch, &audio_manager);
             }
             if last_battery != device.get_battery_status() {
                 tray.set_tooltip(&match device.get_battery_status() {
@@ -95,68 +100,23 @@ fn main() -> Result<()> {
         };
         if window.as_mut().map(|w| w.handle_events(&event, |egui_ctx| {
             egui::CentralPanel::default().show(egui_ctx, |ui| {
-                ui.vertical_centered_justified(|ui|{
-                    ui.heading(device.get_name());
-                    ui.label(format!("Connected '{:?}'", device.is_connected()));
-                    ui.label(format!("Battery '{:?}'", device.get_battery_status()));
-                    ui.label(format!("Chatmix '{:?}'", device.get_chat_mix()));
-                    let result = egui::ComboBox::from_label("Default audio device")
-                        .width(300.0)
-                        .show_index(ui, &mut default_device, audio_devices.len(), |i| audio_devices[i].name().to_string());
-                    if result.changed() {
-                        audio_manager.set_default_device(&audio_devices[default_device]).unwrap();
-                    }
-                    {
-                        let mut dirty = false;
-                        let headset = &mut config.get_headset(device.get_name()).switch_output;
-                        let mut enabled = *headset != OutputSwitch::Disabled;
-                        if ui.checkbox(&mut enabled, "Switch output on connect").changed() {
-                            if enabled {
-                                let default_audio = audio_manager
-                                    .get_default_device()
-                                    .map(|d| d.name().to_string())
-                                    .unwrap_or_else(|| String::from("<None>"));
-                                *headset = OutputSwitch::Enabled {
-                                    on_connect: default_audio.clone(),
-                                    on_disconnect: default_audio.clone(),
-                                };
-                            } else {
-                                *headset = OutputSwitch::Disabled;
-                            }
-                            dirty |= true;
-                        }
-                        if let OutputSwitch::Enabled { on_connect, on_disconnect } = headset {
-                            let mut selected = audio_devices
-                                .iter()
-                                .position(|d| d.name() == on_connect)
-                                .unwrap_or(0);
-                            let changed = egui::ComboBox::from_label("Connected:")
-                                .width(300.0)
-                                .show_index(ui, &mut selected, audio_devices.len(), |i| audio_devices[i].name().to_string())
-                                .changed();
-                            if changed {
-                                dirty |= true;
-                                *on_connect = audio_devices[selected].name().to_string();
-                            }
-
-                            let mut selected = audio_devices
-                                .iter()
-                                .position(|d| d.name() == on_disconnect)
-                                .unwrap_or(0);
-                            let changed = egui::ComboBox::from_label("Disconnected:")
-                                .width(300.0)
-                                .show_index(ui, &mut selected, audio_devices.len(), |i| audio_devices[i].name().to_string())
-                                .changed();
-                            if changed {
-                                dirty |= true;
-                                *on_disconnect = audio_devices[selected].name().to_string();
-                            }
-                        }
-                        if dirty {
-                            config.save().unwrap();
+                ui.heading(device.get_name());
+                ui.label(format!("Connected '{:?}'", device.is_connected()));
+                ui.label(format!("Battery '{:?}'", device.get_battery_status()));
+                ui.label(format!("Chatmix '{:?}'", device.get_chat_mix()));
+                let mut dirty = false;
+                {
+                    let switch = &mut config.get_headset(device.get_name()).switch_output;
+                    if audio_output_switch_selector(ui, switch, &audio_devices, || audio_manager.get_default_device()) {
+                        dirty |= true;
+                        if device.is_connected() {
+                            apply_audio_switch(true, switch, &audio_manager);
                         }
                     }
-                });
+                }
+                if dirty {
+                    config.save().unwrap();
+                }
                 //ui.spinner();
             });
         })).unwrap_or(false) {
@@ -184,6 +144,29 @@ fn main() -> Result<()> {
         }
     });
     Ok(())
+}
+
+fn apply_audio_switch(connected: bool, switch: &OutputSwitch, audio_manager: &AudioManager) {
+    if let OutputSwitch::Enabled { on_connect, on_disconnect} = switch {
+        let target = match connected {
+            true => on_connect,
+            false => on_disconnect
+        };
+        if let Some(device) = audio_manager
+            .devices()
+            .find(|dev| dev.name() == target) {
+            match audio_manager
+                .get_default_device()
+                .map(|dev|dev == device)
+                .unwrap_or(false) {
+                true => log::info!("Device \"{}\" is already active", device.name()),
+                false => {
+                    audio_manager.set_default_device(&device)
+                        .log_ok("Could not change default audio device");
+                }
+            }
+        }
+    }
 }
 
 struct EguiWindow {
