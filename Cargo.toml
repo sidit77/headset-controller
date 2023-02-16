@@ -19,7 +19,6 @@ anyhow = {version = "1.0", features=["backtrace"]}
 log = "0.4"
 env_logger = "0.10"
 hidapi = "2.1"
-notifica = "3.0"
 directories-next = "2.0"
 serde = { version = "1.0", features = ["derive"] }
 ron = "0.8"
@@ -32,6 +31,9 @@ raw-window-handle = "0.5"
 tao = { version = "0.18.0", features = ["tray"] }
 glutin-tao = {path = "./lib/glutin-tao"}
 egui-tao = {path = "./lib/egui-tao"}
+
+[target."cfg(not(target_os = \"windows\"))".dependencies]
+notify-rust = "4.7"
 
 [target."cfg(target_os = \"windows\")".dependencies]
 com-policy-config = "0.1"
@@ -46,5 +48,8 @@ features = [
     "Win32_UI_Shell_PropertiesSystem",
     "Win32_System_Com_StructuredStorage",
     "Win32_Devices_FunctionDiscovery",
-    "Devices_Custom"
+    "Win32_System_SystemInformation",
+    "Foundation_Collections",
+    "Data_Xml_Dom",
+    "UI_Notifications"
 ]

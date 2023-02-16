@@ -6,9 +6,10 @@ mod util;
 mod audio;
 mod config;
 mod ui;
+mod notification;
 
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use anyhow::Result;
 use egui::Visuals;
 use glow::Context;
@@ -41,13 +42,6 @@ fn main() -> Result<()> {
     let audio_devices = audio_manager
         .devices()
         .collect::<Vec<_>>();
-    let mut default_device = {
-        let def = audio_manager.get_default_device().unwrap();
-        audio_devices
-            .iter()
-            .position(|d| d == &def)
-            .unwrap()
-    };
 
     let mut device = devices::find_device().unwrap();
 
@@ -73,10 +67,10 @@ fn main() -> Result<()> {
             next_device_poll = Instant::now() + device.poll().unwrap();
 
             if last_connected != device.is_connected() {
-                notifica::notify(device.get_name(), match device.is_connected() {
+                notification::notify(device.get_name(), match device.is_connected() {
                     true => "Connected",
                     false => "Disconnected"
-                }).unwrap();
+                }, Duration::from_secs(2)).log_ok("Can not create notification");
                 let switch = &config.get_headset(device.get_name()).switch_output;
                 apply_audio_switch(device.is_connected(), switch, &audio_manager);
             }

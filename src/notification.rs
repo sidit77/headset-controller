@@ -1,0 +1,42 @@
+use std::time::Duration;
+use anyhow::Result;
+
+#[cfg(target_os = "windows")]
+pub fn notify(msg_title: &str, msg_body: &str, duration: Duration) -> Result<()> {
+    use std::thread;
+    use windows::core::HSTRING;
+    use windows::UI::Notifications::{ToastNotification, ToastNotificationManager, ToastTemplateType};
+    use crate::util::LogResultExt;
+
+    let toast_xml = ToastNotificationManager::GetTemplateContent(ToastTemplateType::ToastText02)?;
+    let toast_text_elements = toast_xml.GetElementsByTagName(&HSTRING::from("text"))?;
+
+    toast_text_elements
+        .GetAt(0)?
+        .AppendChild(&toast_xml.CreateTextNode(&HSTRING::from(msg_title))?)?;
+
+    toast_text_elements
+        .GetAt(1)?
+        .AppendChild(&toast_xml.CreateTextNode(&HSTRING::from(msg_body))?)?;
+
+    let toast = ToastNotification::CreateToastNotification(&toast_xml)?;
+
+    let notifier = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from("ArctisController"))?;
+    notifier.Show(&toast)?;
+    thread::spawn(move || {
+        thread::sleep(duration);
+        notifier.Hide(&toast)
+            .log_ok("Can not hide notification");
+    });
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn notify(msg_title: &str, msg_body: &str, duration: Duration) -> Result<()> {
+    notify_rust::Notification::new()
+        .summary(msg_title)
+        .body(msg_body)
+        .timeout(duration)
+        .show()?;
+    Ok(())
+}
