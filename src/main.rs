@@ -22,6 +22,7 @@ use tao::menu::{ContextMenu, MenuItemAttributes};
 use tao::platform::run_return::EventLoopExtRunReturn;
 use tao::system_tray::SystemTrayBuilder;
 use tao::window::Icon;
+use windows::s;
 use crate::audio::AudioManager;
 use crate::config::{Config, OutputSwitch, Profile};
 use crate::devices::BatteryLevel;
@@ -99,7 +100,7 @@ fn main() -> Result<()> {
             let headset = config.get_headset(&device.get_info().name);
             egui::SidePanel::new(Side::Left, "Profiles")
                 .resizable(true)
-                .width_range(100.0..=400.0)
+                .width_range(175.0..=400.0)
                 .show(egui_ctx, |ui| {
                     ui.style_mut().text_styles.get_mut(&TextStyle::Body).unwrap().size = 14.0;
                     ui.label(RichText::from(&device.get_info().manufacturer)
@@ -139,13 +140,14 @@ fn main() -> Result<()> {
                         .auto_shrink([false; 2])
                         .show(ui, |ui| {
                             delete_buffer.clear();
+                            let profile_count = headset.profiles.len();
                             for (i, profile) in headset.profiles.iter_mut().enumerate() {
                                 let resp = ui.with_layout(Layout::default().with_cross_justify(true), |ui|
                                     ui.selectable_label(i as u32 == headset.selected_profile_index, &profile.name)).inner;
                                 let resp = resp.context_menu(|ui| {
                                     ui.text_edit_singleline(&mut profile.name);
                                     ui.add_space(4.0);
-                                    if ui.button("Delete").clicked() {
+                                    if ui.add_enabled(profile_count > 1, egui::Button::new("Delete")).clicked() {
                                         delete_buffer.push(i);
                                         ui.close_menu();
                                     }
@@ -170,7 +172,19 @@ fn main() -> Result<()> {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false; 2])
                     .show(ui, |ui| {
-                        ui.heading("General");
+                        ui.heading("Profile");
+                        {
+                            let profile = headset.selected_profile();
+                            if let Some(side_tone) = device.get_side_tone() {
+                                let slider = egui::Slider::new(&mut profile.side_tone, 0..=side_tone.levels())
+                                    .text("Side Tone");
+                                if ui.add(slider).changed() {
+                                    side_tone.set_level(profile.side_tone);
+                                }
+                            }
+                        }
+                        ui.add_space(20.0);
+                        ui.heading("Headset");
                         ui.add_space(7.0);
                         {
                             let switch = &mut headset.switch_output;
@@ -182,7 +196,8 @@ fn main() -> Result<()> {
                             }
                         }
                         ui.add_space(20.0);
-                        ui.heading("Profile");
+                        ui.heading("Application");
+
                     });
                 //ui.spinner();
             });

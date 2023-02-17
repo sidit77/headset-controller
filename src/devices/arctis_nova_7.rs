@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 use anyhow::{ensure, Result};
 use hidapi::{DeviceInfo, HidApi, HidDevice};
-use crate::devices::{BatteryLevel, BoxedDevice, ChatMix, Device, DeviceSupport, Info};
+use crate::devices::{BatteryLevel, BoxedDevice, ChatMix, Device, DeviceSupport, Info, SideTone};
 
 const STEELSERIES: u16 = 0x1038;
 
@@ -138,5 +138,19 @@ impl Device for ArcticsNova7 {
     fn get_chat_mix(&self) -> Option<ChatMix> {
         //assert!(self.connected);
         Some(self.chat_mix)
+    }
+
+    fn get_side_tone(&self) -> Option<&dyn SideTone> {
+        Some(self)
+    }
+}
+
+impl SideTone for ArcticsNova7 {
+    fn levels(&self) -> u8 {
+        4
+    }
+
+    fn set_level(&self, level: u8) {
+        log::info!("Setting sidetone to {}", level);
     }
 }
