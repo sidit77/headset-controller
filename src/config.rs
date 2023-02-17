@@ -15,16 +15,38 @@ pub enum OutputSwitch {
     }
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Profile {
+    pub name: String,
     pub side_tone: Option<u8>
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+impl Profile {
+    
+    pub(crate) fn new(name: String) -> Self {
+        Self {
+            name,
+            side_tone: None,
+        }
+    }
+    
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeadsetConfig {
     pub switch_output: OutputSwitch,
-    selected_profile: String,
-    profiles: HashMap<String, Profile>,
+    pub selected_profile_index: u32,
+    pub profiles: Vec<Profile>,
+}
+
+impl Default for HeadsetConfig {
+    fn default() -> Self {
+        Self {
+            switch_output: Default::default(),
+            selected_profile_index: 0,
+            profiles: vec![Profile::new(String::from("Default"))],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,19 +102,20 @@ impl Config {
 
 impl HeadsetConfig {
 
-    pub fn profile(&mut self) -> &mut Profile {
-        if self.profiles.is_empty() {
-            self.profiles.insert(String::from("Default"), Profile::default());
-        }
-        if !self.profiles.contains_key(&self.selected_profile){
-            self.selected_profile = self.profiles
-                .iter()
-                .map(|(k, _)| k.clone())
-                .next()
-                .expect("At least the default profile should always exist")
-        }
-        self.profiles.get_mut(&self.selected_profile)
-            .expect("Should always be valid")
-    }
+    //pub fn current_profile(&mut self) -> &mut Profile {
+    //    if self.profiles.is_empty() {
+    //        self.new_profile();
+    //    }
+    //    if !self.profiles.contains_key(&self.selected_profile){
+    //        self.selected_profile = self.profiles
+    //            .iter()
+    //            .map(|(k, _)| k.clone())
+    //            .next()
+    //            .expect("At least the default profile should always exist")
+    //    }
+    //    self.profiles.get_mut(&self.selected_profile)
+    //        .expect("Should always be valid")
+    //}
+
 
 }

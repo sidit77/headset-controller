@@ -12,7 +12,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use anyhow::Result;
 use egui::panel::Side;
-use egui::{RichText, TextStyle, Visuals, Widget};
+use egui::{Align, Id, Layout, Memory, popup, RichText, TextStyle, Visuals, Widget, WidgetText};
+use egui::text::LayoutJob;
 use glow::Context;
 use log::LevelFilter;
 use tao::event::{Event, WindowEvent};
@@ -22,7 +23,7 @@ use tao::platform::run_return::EventLoopExtRunReturn;
 use tao::system_tray::SystemTrayBuilder;
 use tao::window::Icon;
 use crate::audio::AudioManager;
-use crate::config::{Config, OutputSwitch};
+use crate::config::{Config, OutputSwitch, Profile};
 use crate::devices::BatteryLevel;
 use crate::renderer::{create_display, GlutinWindowContext};
 use crate::renderer::egui_glow_tao::EguiGlow;
@@ -60,7 +61,7 @@ fn main() -> Result<()> {
 
     let mut window: Option<EguiWindow> = Some(EguiWindow::new(&event_loop));
 
-
+    let mut delete_buffer: Vec<usize> = Vec::new();
     let mut next_device_poll = Instant::now();
     event_loop.run_return(move |event, event_loop, control_flow| {
         if next_device_poll <= Instant::now() {
@@ -126,13 +127,41 @@ fn main() -> Result<()> {
                         ui.label("Not Connected");
                     }
                     ui.separator();
-                    ui.heading("Profiles");
+                    ui.horizontal(|ui| {
+                        ui.heading("Profiles");
+                        let resp = ui.with_layout(Layout::right_to_left(Align::Center), |ui|
+                            ui.selectable_label(false, RichText::from("+").heading())).inner;
+                        if resp.clicked() {
+                            headset.profiles.push(Profile::new(String::from("New Profile")));
+                        }
+                    });
                     egui::ScrollArea::vertical()
                         .auto_shrink([false; 2])
                         .show(ui, |ui| {
-                            for i in 0..10 {
-                                ui.label(format!("Profile {}", i));
+                            delete_buffer.clear();
+                            for (i, profile) in headset.profiles.iter_mut().enumerate() {
+                                let resp = ui.with_layout(Layout::default().with_cross_justify(true), |ui|
+                                    ui.selectable_label(i as u32 == headset.selected_profile_index, &profile.name)).inner;
+                                let resp = resp.context_menu(|ui| {
+                                    ui.text_edit_singleline(&mut profile.name);
+                                    ui.add_space(4.0);
+                                    if ui.button("Delete").clicked() {
+                                        delete_buffer.push(i);
+                                        ui.close_menu();
+                                    }
+                                });
+                                if resp.clicked() {
+                                    headset.selected_profile_index = i as u32;
+                                }
                             }
+                            for i in delete_buffer.iter().rev() {
+                                headset.profiles.remove(*i);
+                            }
+                            headset.selected_profile_index -= delete_buffer
+                                .iter()
+                                .filter(|i| **i as u32 <= headset.selected_profile_index)
+                                .count()
+                                .min(headset.selected_profile_index as usize) as u32;
                         });
                 });
             egui::CentralPanel::default().show(egui_ctx, |ui| {
@@ -158,7 +187,7 @@ fn main() -> Result<()> {
                 //ui.spinner();
             });
             if dirty {
-                config.save().unwrap();
+                //config.save().unwrap();
             }
         })).unwrap_or(false) {
             window.take();
