@@ -21,7 +21,7 @@ pub fn notify(msg_title: &str, msg_body: &str, duration: Duration) -> Result<()>
 
     let toast = ToastNotification::CreateToastNotification(&toast_xml)?;
 
-    let notifier = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from("ArctisController"))?;
+    let notifier = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from("HeadsetController"))?;
     notifier.Show(&toast)?;
     thread::spawn(move || {
         thread::sleep(duration);

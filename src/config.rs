@@ -66,7 +66,7 @@ impl Config {
     pub fn path() -> PathBuf {
         let dirs = BaseDirs::new().expect("can not get directories");
         let config_dir = dirs.config_dir();
-        config_dir.join("ArctisController.ron")
+        config_dir.join("HeadsetController.ron")
     }
 
     pub fn load() -> Result<Self> {

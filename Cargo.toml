@@ -1,5 +1,5 @@
 [package]
-name = "arctis_controller"
+name = "headset-controller"
 version = "0.1.0"
 edition = "2021"
 

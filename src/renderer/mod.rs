@@ -34,7 +34,7 @@ impl GlutinWindowContext {
                 width: 800.0,
                 height: 600.0,
             })
-            .with_title("Arctis Controller") // Keep hidden until we've painted something. See https://github.com/emilk/egui/pull/2279
+            .with_title("Headset Controller") // Keep hidden until we've painted something. See https://github.com/emilk/egui/pull/2279
             .with_visible(false);
 
         let config_template_builder = ConfigTemplateBuilder::new()
