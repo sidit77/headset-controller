@@ -23,7 +23,7 @@ use tao::system_tray::SystemTrayBuilder;
 use tao::window::Icon;
 use crate::audio::AudioManager;
 use crate::config::{Config, EqualizerConfig, OutputSwitch, Profile};
-use crate::devices::BatteryLevel;
+use crate::devices::{BatteryLevel, Device};
 use crate::renderer::{create_display, GlutinWindowContext};
 use crate::renderer::egui_glow_tao::EguiGlow;
 use crate::ui::{audio_output_switch_selector};
@@ -137,6 +137,7 @@ fn main() -> Result<()> {
                     egui::ScrollArea::vertical()
                         .auto_shrink([false; 2])
                         .show(ui, |ui| {
+                            let old_profile_index = headset.selected_profile_index;
                             delete_buffer.clear();
                             let profile_count = headset.profiles.len();
                             for (i, profile) in headset.profiles.iter_mut().enumerate() {
@@ -162,6 +163,9 @@ fn main() -> Result<()> {
                                 .filter(|i| **i as u32 <= headset.selected_profile_index)
                                 .count()
                                 .min(headset.selected_profile_index as usize) as u32;
+                            if headset.selected_profile_index != old_profile_index {
+                                apply_profile(headset.selected_profile(), device.as_ref());
+                            }
                         });
                 });
             egui::CentralPanel::default().show(egui_ctx, |ui| {
@@ -180,7 +184,8 @@ fn main() -> Result<()> {
                                         EqualizerConfig::Preset(i) => equalizer.presets()[*i as usize].1,
                                         EqualizerConfig::Custom(levels) => &levels
                                     };
-                                    equalizer.set_levels(&levels);
+                                    equalizer.set_levels(&levels)
+                                        .log_ok("Could not set equalizer");
                                 }
                                 ui.add_space(10.0);
                             }
@@ -190,7 +195,8 @@ fn main() -> Result<()> {
                                     .ui(ui)
                                     .on_hover_text("This setting controls how much of your voice is played back over the headset when you speak.\nSet to 0 to turn off.");
                                 if resp.changed() {
-                                    side_tone.set_level(profile.side_tone);
+                                    side_tone.set_level(profile.side_tone)
+                                        .log_ok("Could not set sidetone");
                                 }
                                 ui.add_space(10.0);
                             }
@@ -199,7 +205,8 @@ fn main() -> Result<()> {
                                     .text("Microphone Level")
                                     .ui(ui);
                                 if resp.changed() {
-                                    mic_volume.set_level(profile.microphone_volume);
+                                    mic_volume.set_level(profile.microphone_volume)
+                                        .log_ok("Could not set mic level");
                                 }
                                 ui.add_space(10.0);
                             }
@@ -207,7 +214,8 @@ fn main() -> Result<()> {
                                 let resp = egui::Checkbox::new(&mut profile.volume_limiter, "Limit Volume")
                                     .ui(ui);
                                 if resp.changed() {
-                                    volume_limiter.set_enabled(profile.volume_limiter);
+                                    volume_limiter.set_enabled(profile.volume_limiter)
+                                        .log_ok("Could not set volume limit");
                                 }
                                 ui.add_space(10.0);
                             }
@@ -263,6 +271,29 @@ fn main() -> Result<()> {
         }
     });
     Ok(())
+}
+
+fn apply_profile(profile: &Profile, device: &dyn Device) {
+    if let Some(equalizer) = device.get_equalizer() {
+        let levels = match &profile.equalizer {
+            EqualizerConfig::Preset(i) => equalizer.presets()[*i as usize].1,
+            EqualizerConfig::Custom(levels) => &levels
+        };
+        equalizer.set_levels(&levels)
+            .log_ok("Could not set equalizer");
+    }
+    if let Some(side_tone) = device.get_side_tone() {
+        side_tone.set_level(profile.side_tone)
+            .log_ok("Could not set sidetone");
+    }
+    if let Some(mic_volume) = device.get_mic_volume() {
+        mic_volume.set_level(profile.microphone_volume)
+            .log_ok("Could not set mic level");
+    }
+    if let Some(volume_limiter) = device.get_volume_limiter() {
+        volume_limiter.set_enabled(profile.volume_limiter)
+            .log_ok("Could not set volume limit");
+    }
 }
 
 fn apply_audio_switch(connected: bool, switch: &OutputSwitch, audio_manager: &AudioManager) {

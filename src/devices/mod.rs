@@ -43,16 +43,16 @@ impl Default for ChatMix {
 
 pub trait SideTone {
     fn levels(&self) -> u8;
-    fn set_level(&self, level: u8);
+    fn set_level(&self, level: u8) -> Result<()>;
 }
 
 pub trait VolumeLimiter {
-    fn set_enabled(&self, enabled: bool);
+    fn set_enabled(&self, enabled: bool) -> Result<()>;
 }
 
 pub trait MicrophoneVolume {
     fn levels(&self) -> u8;
-    fn set_level(&self, level: u8);
+    fn set_level(&self, level: u8) -> Result<()>;
 }
 
 pub trait Equalizer {
@@ -60,7 +60,7 @@ pub trait Equalizer {
     fn base_level(&self) -> u8;
     fn variance(&self) -> u8;
     fn presets(&self) -> &[(&str, &[u8])];
-    fn set_levels(&self, levels: &[u8]);
+    fn set_levels(&self, levels: &[u8]) -> Result<()>;
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

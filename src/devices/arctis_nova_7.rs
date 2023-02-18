@@ -157,8 +157,11 @@ impl SideTone for ArcticsNova7 {
     fn levels(&self) -> u8 {
         4
     }
-    fn set_level(&self, level: u8) {
-        log::info!("Setting sidetone to {}", level);
+    fn set_level(&self, level: u8) -> Result<()> {
+        assert!(level < SideTone::levels(self));
+        log::debug!("Setting sidetone to {}", level);
+        self.device.write(&[0x00, 0x39, level])?;
+        Ok(())
     }
 }
 
@@ -166,14 +169,19 @@ impl MicrophoneVolume for ArcticsNova7 {
     fn levels(&self) -> u8 {
         8
     }
-    fn set_level(&self, level: u8) {
+    fn set_level(&self, level: u8) -> Result<()> {
+        assert!(level < MicrophoneVolume::levels(self));
         log::info!("Setting mic volume to {}", level);
+        self.device.write(&[0x00, 0x37, level])?;
+        Ok(())
     }
 }
 
 impl VolumeLimiter for ArcticsNova7 {
-    fn set_enabled(&self, enabled: bool) {
+    fn set_enabled(&self, enabled: bool) -> Result<()> {
         log::info!("Setting volume limiter to {}", enabled);
+        self.device.write(&[0x00, 0x3a, if enabled {0x01} else {0x00}])?;
+        Ok(())
     }
 }
 
@@ -199,7 +207,14 @@ impl Equalizer for ArcticsNova7 {
         ]
     }
 
-    fn set_levels(&self, levels: &[u8]) {
+    fn set_levels(&self, levels: &[u8]) -> Result<()> {
+        assert_eq!(levels.len(), Equalizer::bands(self) as usize);
+        assert!(levels.iter().all(|i| *i >= self.base_level() - self.variance() && *i <= self.base_level() + self.variance()));
         log::info!("Setting equalizer to {:?}", levels);
+        let mut msg = [0u8; 13];
+        msg[1] = 0x33;
+        msg[2..12].copy_from_slice(levels);
+        self.device.write(&msg)?;
+        Ok(())
     }
 }
