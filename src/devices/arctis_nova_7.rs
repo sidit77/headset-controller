@@ -130,7 +130,7 @@ impl Device for ArcticsNova7 {
         })
     }
 
-    fn get_battery_status(&self) -> Option<BatteryLevel> { ;
+    fn get_battery_status(&self) -> Option<BatteryLevel> {
         Some(self.battery)
     }
     fn get_chat_mix(&self) -> Option<ChatMix> {

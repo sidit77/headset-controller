@@ -1,6 +1,40 @@
-use egui::{RichText, Ui};
+use egui::{Ui, Widget};
 use crate::audio::AudioDevice;
-use crate::config::OutputSwitch;
+use crate::config::{EqualizerConfig, OutputSwitch};
+use crate::devices::Equalizer;
+
+pub fn equalizer(ui: &mut Ui, conf: &mut EqualizerConfig, equalizer: &dyn Equalizer) -> bool {
+    let range = (equalizer.base_level() - equalizer.variance())..=(equalizer.base_level() + equalizer.variance());
+    let mut presets = equalizer.presets().iter().map(|(s, _)| s.to_string()).collect::<Vec<_>>();
+    let custom_index = presets.len();
+    presets.push("Custom".to_string());
+    let (mut current_index, mut levels) = match conf {
+        EqualizerConfig::Preset(i) => (*i as usize, equalizer.presets()[*i as usize].1.to_vec()),
+        EqualizerConfig::Custom(levels) => (custom_index, levels.clone())
+    };
+    let preset = egui::ComboBox::from_label("Equalizer")
+        .show_index(ui, &mut current_index, presets.len(), |i| presets[i].clone());
+    let mut dirty = preset.changed();
+    ui.horizontal(|ui| {
+        for i in levels.iter_mut() {
+            let resp = egui::Slider::new(i, range.clone())
+                .vertical()
+                .ui(ui);
+            if resp.changed() {
+                dirty |= true;
+                current_index = custom_index;
+            }
+        }
+    });
+    if dirty {
+        *conf = if current_index == custom_index {
+            EqualizerConfig::Custom(levels)
+        } else {
+            EqualizerConfig::Preset(current_index as u32)
+        };
+    }
+    dirty
+}
 
 pub fn audio_output_switch_selector(ui: &mut Ui, switch: &mut OutputSwitch,
                                     audio_devices: &[AudioDevice],

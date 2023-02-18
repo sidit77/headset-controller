@@ -12,8 +12,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use anyhow::Result;
 use egui::panel::Side;
-use egui::{Align, Id, Layout, Memory, popup, RichText, TextStyle, Visuals, Widget, WidgetText};
-use egui::text::LayoutJob;
+use egui::{Align, Layout, RichText, TextStyle, Visuals, Widget};
 use glow::Context;
 use log::LevelFilter;
 use tao::event::{Event, WindowEvent};
@@ -22,7 +21,6 @@ use tao::menu::{ContextMenu, MenuItemAttributes};
 use tao::platform::run_return::EventLoopExtRunReturn;
 use tao::system_tray::SystemTrayBuilder;
 use tao::window::Icon;
-use windows::s;
 use crate::audio::AudioManager;
 use crate::config::{Config, EqualizerConfig, OutputSwitch, Profile};
 use crate::devices::BatteryLevel;
@@ -177,18 +175,12 @@ fn main() -> Result<()> {
                         {
                             let profile = headset.selected_profile();
                             if let Some(equalizer) = device.get_equalizer() {
-                                let range = (equalizer.base_level() - equalizer.variance())..=(equalizer.base_level() + equalizer.variance());
-                                if let EqualizerConfig::Preset(_) = profile.equalizer {
-                                    profile.equalizer = EqualizerConfig::Custom(equalizer.presets().first().unwrap().1.to_vec());
-                                }
-                                if let EqualizerConfig::Custom(levels) = &mut profile.equalizer {
-                                    ui.horizontal(|ui| {
-                                        for i in levels.iter_mut() {
-                                            let resp = egui::Slider::new(i, range.clone())
-                                                .vertical()
-                                                .ui(ui);
-                                        }
-                                    });
+                                if ui::equalizer(ui, &mut profile.equalizer, equalizer) {
+                                    let levels = match &profile.equalizer {
+                                        EqualizerConfig::Preset(i) => equalizer.presets()[*i as usize].1,
+                                        EqualizerConfig::Custom(levels) => &levels
+                                    };
+                                    equalizer.set_levels(&levels);
                                 }
                                 ui.add_space(10.0);
                             }
