@@ -62,7 +62,14 @@ fn main() -> Result<()> {
 
     let mut delete_buffer: Vec<usize> = Vec::new();
     let mut next_device_poll = Instant::now();
+    let mut last_config_edit: Option<Instant> = None;
     event_loop.run_return(move |event, event_loop, control_flow| {
+        if let Some(update) = last_config_edit {
+            if update.elapsed() > Duration::from_secs(10) {
+                config.save().log_ok("Could not save config");
+                last_config_edit = None;
+            }
+        }
         if next_device_poll <= Instant::now() {
             let (last_connected, last_battery) = (device.is_connected(), device.get_battery_status());
             next_device_poll = Instant::now() + device.poll().unwrap();
@@ -132,6 +139,7 @@ fn main() -> Result<()> {
                             ui.selectable_label(false, RichText::from("+").heading())).inner;
                         if resp.clicked() {
                             headset.profiles.push(Profile::new(String::from("New Profile")));
+                            dirty |= true;
                         }
                     });
                     egui::ScrollArea::vertical()
@@ -157,6 +165,7 @@ fn main() -> Result<()> {
                             }
                             for i in delete_buffer.iter().rev() {
                                 headset.profiles.remove(*i);
+                                dirty |= true;
                             }
                             headset.selected_profile_index -= delete_buffer
                                 .iter()
@@ -165,6 +174,7 @@ fn main() -> Result<()> {
                                 .min(headset.selected_profile_index as usize) as u32;
                             if headset.selected_profile_index != old_profile_index {
                                 apply_profile(headset.selected_profile(), device.as_ref());
+                                dirty |= true;
                             }
                         });
                 });
@@ -186,6 +196,7 @@ fn main() -> Result<()> {
                                     };
                                     equalizer.set_levels(&levels)
                                         .log_ok("Could not set equalizer");
+                                    dirty |= true;
                                 }
                                 ui.add_space(10.0);
                             }
@@ -197,6 +208,7 @@ fn main() -> Result<()> {
                                 if resp.changed() {
                                     side_tone.set_level(profile.side_tone)
                                         .log_ok("Could not set sidetone");
+                                    dirty |= true;
                                 }
                                 ui.add_space(10.0);
                             }
@@ -207,6 +219,7 @@ fn main() -> Result<()> {
                                 if resp.changed() {
                                     mic_volume.set_level(profile.microphone_volume)
                                         .log_ok("Could not set mic level");
+                                    dirty |= true;
                                 }
                                 ui.add_space(10.0);
                             }
@@ -216,6 +229,7 @@ fn main() -> Result<()> {
                                 if resp.changed() {
                                     volume_limiter.set_enabled(profile.volume_limiter)
                                         .log_ok("Could not set volume limit");
+                                    dirty |= true;
                                 }
                                 ui.add_space(10.0);
                             }
@@ -244,9 +258,10 @@ fn main() -> Result<()> {
                 //ui.spinner();
             });
             if dirty {
-                //config.save().unwrap();
+                last_config_edit = Some(Instant::now());
             }
         })).unwrap_or(false) {
+            config.save().log_ok("Could not save config");
             window.take();
             if cfg!(debug_assertions) {
                 *control_flow = ControlFlow::Exit;

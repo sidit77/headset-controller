@@ -21,6 +21,11 @@ pub enum EqualizerConfig {
     Custom(Vec<u8>)
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub enum CallAction {
+    Nothing, LowerVolume, Mute
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Profile {
     pub name: String,
@@ -47,6 +52,10 @@ impl Profile {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeadsetConfig {
     pub switch_output: OutputSwitch,
+    pub mic_light: u8,
+    pub bluetooth_call: CallAction,
+    pub auto_enable_bluetooth: bool,
+    pub inactive_time: u8,
     pub selected_profile_index: u32,
     pub profiles: Vec<Profile>,
 }
@@ -55,6 +64,10 @@ impl Default for HeadsetConfig {
     fn default() -> Self {
         Self {
             switch_output: Default::default(),
+            mic_light: 0,
+            bluetooth_call: CallAction::Nothing,
+            auto_enable_bluetooth: false,
+            inactive_time: 30,
             selected_profile_index: 0,
             profiles: vec![Profile::new(String::from("Default"))],
         }
