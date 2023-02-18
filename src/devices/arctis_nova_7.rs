@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 use anyhow::{ensure, Result};
 use hidapi::{DeviceInfo, HidApi, HidDevice};
-use crate::devices::{BatteryLevel, BoxedDevice, ChatMix, Device, DeviceSupport, Info, SideTone};
+use crate::devices::{BatteryLevel, BoxedDevice, ChatMix, Device, DeviceSupport, Equalizer, Info, MicrophoneVolume, SideTone, VolumeLimiter};
 
 const STEELSERIES: u16 = 0x1038;
 
@@ -130,17 +130,25 @@ impl Device for ArcticsNova7 {
         })
     }
 
-    fn get_battery_status(&self) -> Option<BatteryLevel> {
-        //assert!(self.connected);
+    fn get_battery_status(&self) -> Option<BatteryLevel> { ;
         Some(self.battery)
     }
-
     fn get_chat_mix(&self) -> Option<ChatMix> {
-        //assert!(self.connected);
         Some(self.chat_mix)
     }
-
     fn get_side_tone(&self) -> Option<&dyn SideTone> {
+        Some(self)
+    }
+
+    fn get_mic_volume(&self) -> Option<&dyn MicrophoneVolume> {
+        Some(self)
+    }
+
+    fn get_volume_limiter(&self) -> Option<&dyn VolumeLimiter> {
+        Some(self)
+    }
+
+    fn get_equalizer(&self) -> Option<&dyn Equalizer> {
         Some(self)
     }
 }
@@ -149,8 +157,49 @@ impl SideTone for ArcticsNova7 {
     fn levels(&self) -> u8 {
         4
     }
-
     fn set_level(&self, level: u8) {
         log::info!("Setting sidetone to {}", level);
+    }
+}
+
+impl MicrophoneVolume for ArcticsNova7 {
+    fn levels(&self) -> u8 {
+        8
+    }
+    fn set_level(&self, level: u8) {
+        log::info!("Setting mic volume to {}", level);
+    }
+}
+
+impl VolumeLimiter for ArcticsNova7 {
+    fn set_enabled(&self, enabled: bool) {
+        log::info!("Setting volume limiter to {}", enabled);
+    }
+}
+
+impl Equalizer for ArcticsNova7 {
+    fn bands(&self) -> u8 {
+        10
+    }
+
+    fn base_level(&self) -> u8 {
+        0x14
+    }
+
+    fn variance(&self) -> u8 {
+        0x14
+    }
+
+    fn presets(&self) -> &[(&str, &[u8])] {
+        &[
+            ("Flat",   &[0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14]),
+            ("Bass",   &[0x1b, 0x1f, 0x1c, 0x16, 0x11, 0x11, 0x12, 0x12, 0x12, 0x12]),
+            ("Focus",  &[0x0a, 0x0d, 0x12, 0x0d, 0x0f, 0x1c, 0x20, 0x1b, 0x0d, 0x14]),
+            ("Smiley", &[0x1a, 0x1b, 0x17, 0x11, 0x0c, 0x0c, 0x0f, 0x17, 0x1a, 0x1c])
+        ]
+    }
+
+    fn set_levels(&self, levels: &[u8]) {
+        log::info!("Setting equalizer to {:?}", levels);
     }
 }

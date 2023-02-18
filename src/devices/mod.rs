@@ -46,6 +46,23 @@ pub trait SideTone {
     fn set_level(&self, level: u8);
 }
 
+pub trait VolumeLimiter {
+    fn set_enabled(&self, enabled: bool);
+}
+
+pub trait MicrophoneVolume {
+    fn levels(&self) -> u8;
+    fn set_level(&self, level: u8);
+}
+
+pub trait Equalizer {
+    fn bands(&self) -> u8;
+    fn base_level(&self) -> u8;
+    fn variance(&self) -> u8;
+    fn presets(&self) -> &[(&str, &[u8])];
+    fn set_levels(&self, levels: &[u8]);
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Info {
     pub manufacturer: String,
@@ -75,7 +92,15 @@ pub trait Device {
     fn get_side_tone(&self) -> Option<&dyn SideTone> {
         None
     }
-
+    fn get_mic_volume(&self) -> Option<&dyn MicrophoneVolume> {
+        None
+    }
+    fn get_volume_limiter(&self) -> Option<&dyn VolumeLimiter> {
+        None
+    }
+    fn get_equalizer(&self) -> Option<&dyn Equalizer> {
+        None
+    }
 }
 
 pub type BoxedDevice = Box<dyn Device>;

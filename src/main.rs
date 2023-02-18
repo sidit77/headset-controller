@@ -24,7 +24,7 @@ use tao::system_tray::SystemTrayBuilder;
 use tao::window::Icon;
 use windows::s;
 use crate::audio::AudioManager;
-use crate::config::{Config, OutputSwitch, Profile};
+use crate::config::{Config, EqualizerConfig, OutputSwitch, Profile};
 use crate::devices::BatteryLevel;
 use crate::renderer::{create_display, GlutinWindowContext};
 use crate::renderer::egui_glow_tao::EguiGlow;
@@ -169,21 +169,60 @@ fn main() -> Result<()> {
             egui::CentralPanel::default().show(egui_ctx, |ui| {
                 ui.style_mut().text_styles.get_mut(&TextStyle::Heading).unwrap().size = 25.0;
                 ui.style_mut().text_styles.get_mut(&TextStyle::Body).unwrap().size = 14.0;
+                ui.style_mut().text_styles.get_mut(&TextStyle::Button).unwrap().size = 14.0;
                 egui::ScrollArea::vertical()
                     .auto_shrink([false; 2])
                     .show(ui, |ui| {
                         ui.heading("Profile");
                         {
                             let profile = headset.selected_profile();
+                            if let Some(equalizer) = device.get_equalizer() {
+                                let range = (equalizer.base_level() - equalizer.variance())..=(equalizer.base_level() + equalizer.variance());
+                                if let EqualizerConfig::Preset(_) = profile.equalizer {
+                                    profile.equalizer = EqualizerConfig::Custom(equalizer.presets().first().unwrap().1.to_vec());
+                                }
+                                if let EqualizerConfig::Custom(levels) = &mut profile.equalizer {
+                                    ui.horizontal(|ui| {
+                                        for i in levels.iter_mut() {
+                                            let resp = egui::Slider::new(i, range.clone())
+                                                .vertical()
+                                                .ui(ui);
+                                        }
+                                    });
+                                }
+                                ui.add_space(10.0);
+                            }
                             if let Some(side_tone) = device.get_side_tone() {
-                                let slider = egui::Slider::new(&mut profile.side_tone, 0..=side_tone.levels())
-                                    .text("Side Tone");
-                                if ui.add(slider).changed() {
+                                let resp = egui::Slider::new(&mut profile.side_tone, 0..=(side_tone.levels() - 1))
+                                    .text("Side Tone Level")
+                                    .ui(ui)
+                                    .on_hover_text("This setting controls how much of your voice is played back over the headset when you speak.\nSet to 0 to turn off.");
+                                if resp.changed() {
                                     side_tone.set_level(profile.side_tone);
                                 }
+                                ui.add_space(10.0);
+                            }
+                            if let Some(mic_volume) = device.get_mic_volume() {
+                                let resp = egui::Slider::new(&mut profile.microphone_volume, 0..=(mic_volume.levels() - 1))
+                                    .text("Microphone Level")
+                                    .ui(ui);
+                                if resp.changed() {
+                                    mic_volume.set_level(profile.microphone_volume);
+                                }
+                                ui.add_space(10.0);
+                            }
+                            if let Some(volume_limiter) = device.get_volume_limiter() {
+                                let resp = egui::Checkbox::new(&mut profile.volume_limiter, "Limit Volume")
+                                    .ui(ui);
+                                if resp.changed() {
+                                    volume_limiter.set_enabled(profile.volume_limiter);
+                                }
+                                ui.add_space(10.0);
                             }
                         }
-                        ui.add_space(20.0);
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(10.0);
                         ui.heading("Headset");
                         ui.add_space(7.0);
                         {
@@ -194,8 +233,11 @@ fn main() -> Result<()> {
                                     apply_audio_switch(true, switch, &audio_manager);
                                 }
                             }
+                            ui.add_space(10.0);
                         }
-                        ui.add_space(20.0);
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(10.0);
                         ui.heading("Application");
 
                     });

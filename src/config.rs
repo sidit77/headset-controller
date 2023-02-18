@@ -15,10 +15,19 @@ pub enum OutputSwitch {
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub enum EqualizerConfig {
+    Preset(u32),
+    Custom(Vec<u8>)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Profile {
     pub name: String,
-    pub side_tone: u8
+    pub side_tone: u8,
+    pub volume_limiter: bool,
+    pub microphone_volume: u8,
+    pub equalizer: EqualizerConfig
 }
 
 impl Profile {
@@ -27,6 +36,9 @@ impl Profile {
         Self {
             name,
             side_tone: 0,
+            volume_limiter: true,
+            microphone_volume: 0,
+            equalizer: EqualizerConfig::Preset(0),
         }
     }
     

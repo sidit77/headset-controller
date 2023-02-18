@@ -7,7 +7,7 @@ pub fn audio_output_switch_selector(ui: &mut Ui, switch: &mut OutputSwitch,
                                     default_device: impl FnOnce() -> Option<AudioDevice>) -> bool {
     let mut dirty = false;
     let mut enabled = *switch != OutputSwitch::Disabled;
-    if ui.checkbox(&mut enabled, RichText::new("Automatic Output Switching").size(14.0)).changed() {
+    if ui.checkbox(&mut enabled, "Automatic Output Switching").changed() {
         if enabled {
             let default_audio = default_device()
                 .or(audio_devices.first().cloned())
