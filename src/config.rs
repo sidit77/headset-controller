@@ -23,7 +23,7 @@ pub enum EqualizerConfig {
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum CallAction {
-    Nothing, LowerVolume, Mute
+    Nothing, ReduceVolume, Mute
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -182,7 +182,7 @@ fn main() -> Result<()> {
                 ui.style_mut().text_styles.get_mut(&TextStyle::Heading).unwrap().size = 25.0;
                 ui.style_mut().text_styles.get_mut(&TextStyle::Body).unwrap().size = 14.0;
                 ui.style_mut().text_styles.get_mut(&TextStyle::Button).unwrap().size = 14.0;
-                egui::ScrollArea::vertical()
+                egui::ScrollArea::both()
                     .auto_shrink([false; 2])
                     .show(ui, |ui| {
                         ui.heading("Profile");

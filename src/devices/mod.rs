@@ -4,6 +4,7 @@ use std::fmt::{Display, Formatter};
 use std::time::Duration;
 use anyhow::{anyhow, Result};
 use hidapi::{DeviceInfo, HidApi};
+use crate::config::CallAction;
 use crate::util::PeekExt;
 use crate::devices::arctis_nova_7::ArcticsNova7;
 
@@ -63,6 +64,20 @@ pub trait Equalizer {
     fn set_levels(&self, levels: &[u8]) -> Result<()>;
 }
 
+pub trait BluetoothConfig {
+    fn set_call_action(&self, action: CallAction) -> Result<()>;
+    fn set_auto_enabled(&self, enabled: bool) -> Result<()>;
+}
+
+pub trait MicrophoneLight {
+    fn levels(&self) -> u8;
+    fn set_light_strength(&self, level: u8) -> Result<()>;
+}
+
+pub trait InactiveTime {
+    fn set_inactive_time(&self, minutes: u8) -> Result<()>;
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Info {
     pub manufacturer: String,
@@ -99,6 +114,15 @@ pub trait Device {
         None
     }
     fn get_equalizer(&self) -> Option<&dyn Equalizer> {
+        None
+    }
+    fn get_bluetooth_config(&self) -> Option<&dyn BluetoothConfig> {
+        None
+    }
+    fn get_inactive_time(&self) -> Option<&dyn InactiveTime> {
+        None
+    }
+    fn get_microphone_light(&self) -> Option<&dyn MicrophoneLight> {
         None
     }
 }

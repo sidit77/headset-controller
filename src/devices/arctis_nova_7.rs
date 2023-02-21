@@ -1,7 +1,8 @@
 use std::time::{Duration, Instant};
 use anyhow::{ensure, Result};
 use hidapi::{DeviceInfo, HidApi, HidDevice};
-use crate::devices::{BatteryLevel, BoxedDevice, ChatMix, Device, DeviceSupport, Equalizer, Info, MicrophoneVolume, SideTone, VolumeLimiter};
+use crate::config::CallAction;
+use crate::devices::{BatteryLevel, BluetoothConfig, BoxedDevice, ChatMix, Device, DeviceSupport, Equalizer, InactiveTime, Info, MicrophoneLight, MicrophoneVolume, SideTone, VolumeLimiter};
 
 const STEELSERIES: u16 = 0x1038;
 
@@ -151,6 +152,18 @@ impl Device for ArcticsNova7 {
     fn get_equalizer(&self) -> Option<&dyn Equalizer> {
         Some(self)
     }
+
+    fn get_bluetooth_config(&self) -> Option<&dyn BluetoothConfig> {
+        Some(self)
+    }
+
+    fn get_inactive_time(&self) -> Option<&dyn InactiveTime> {
+        Some(self)
+    }
+
+    fn get_microphone_light(&self) -> Option<&dyn MicrophoneLight> {
+        Some(self)
+    }
 }
 
 impl SideTone for ArcticsNova7 {
@@ -215,6 +228,37 @@ impl Equalizer for ArcticsNova7 {
         msg[1] = 0x33;
         msg[2..12].copy_from_slice(levels);
         self.device.write(&msg)?;
+        Ok(())
+    }
+}
+
+impl BluetoothConfig for ArcticsNova7 {
+    fn set_call_action(&self, action: CallAction) -> Result<()> {
+        log::info!("Setting call action to {:?}", action);
+        Ok(())
+    }
+
+    fn set_auto_enabled(&self, enabled: bool) -> Result<()> {
+        log::info!("Setting auto bluetooth to {:?}", enabled);
+        Ok(())
+    }
+}
+
+impl MicrophoneLight for ArcticsNova7 {
+    fn levels(&self) -> u8 {
+        4
+    }
+
+    fn set_light_strength(&self, level: u8) -> Result<()> {
+        log::info!("Mic light to {:?}", level);
+        Ok(())
+    }
+}
+
+impl InactiveTime for ArcticsNova7 {
+    fn set_inactive_time(&self, minutes: u8) -> Result<()> {
+        assert!(minutes > 0);
+        log::info!("Setting inactive time to {:?}", minutes);
         Ok(())
     }
 }
