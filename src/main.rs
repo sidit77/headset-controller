@@ -61,7 +61,6 @@ fn main() -> Result<()> {
         false => Some(EguiWindow::new(&event_loop))
     };
 
-    let _delete_buffer: Vec<usize> = Vec::new();
     let mut next_device_poll = Instant::now();
     let mut debouncer = Debouncer::new();
     event_loop.run_return(move |event, event_loop, control_flow| {
