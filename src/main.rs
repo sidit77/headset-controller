@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use anyhow::Result;
 use egui::panel::Side;
-use egui::{Align, Layout, RichText, TextStyle, Visuals, Widget};
+use egui::{Align, Button, Layout, RichText, TextStyle, Visuals, Widget};
 use glow::Context;
 use log::LevelFilter;
 use tao::event::{Event, WindowEvent};
@@ -102,11 +102,11 @@ fn main() -> Result<()> {
         };
         if window.as_mut().map(|w| w.handle_events(&event, |egui_ctx| {
             let mut dirty = false;
-            let headset = config.get_headset(&device.get_info().name);
             egui::SidePanel::new(Side::Left, "Profiles")
                 .resizable(true)
                 .width_range(175.0..=400.0)
                 .show(egui_ctx, |ui| {
+                    let headset = config.get_headset(&device.get_info().name);
                     ui.style_mut().text_styles.get_mut(&TextStyle::Body).unwrap().size = 14.0;
                     ui.label(RichText::from(&device.get_info().manufacturer)
                         .heading()
@@ -185,6 +185,7 @@ fn main() -> Result<()> {
                 egui::ScrollArea::both()
                     .auto_shrink([false; 2])
                     .show(ui, |ui| {
+                        let headset = config.get_headset(&device.get_info().name);
                         ui.heading("Profile");
                         {
                             let profile = headset.selected_profile();
@@ -253,7 +254,31 @@ fn main() -> Result<()> {
                         ui.separator();
                         ui.add_space(10.0);
                         ui.heading("Application");
-
+                        ui.add_space(7.0);
+                        if ui.checkbox(&mut config.auto_apply_changes, "Auto Apply Changes").changed() {
+                            dirty |= true;
+                        }
+                        ui.with_layout(Layout::default().with_main_align(Align::Center), |ui| {
+                            if ui.add_sized([200.0, 20.0], Button::new("Apply Now")).clicked(){
+                                log::info!("applied");
+                            }
+                        });
+                        ui.add_space(10.0);
+                        ui.checkbox(&mut false, "Run On Startup");
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(10.0);
+                        ui.heading("Information");
+                        ui.add_space(7.0);
+                        ui.label(concat!("Version: ", env!("CARGO_PKG_VERSION")));
+                        ui.add_space(7.0);
+                        ui.horizontal(|ui| {
+                            ui.label("Repository: ");
+                            ui.hyperlink("https://github.com/sidit77/headset-controller");
+                        });
+                        ui.add_space(7.0);
+                        ui.label(format!("Config Location: {}", Config::path().display()));
+                        ui.add_space(12.0);
                     });
                 //ui.spinner();
             });
