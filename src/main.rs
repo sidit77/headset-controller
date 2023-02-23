@@ -7,7 +7,9 @@ mod audio;
 mod config;
 mod ui;
 mod notification;
+mod debouncer;
 
+use std::convert::identity;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use anyhow::Result;
@@ -22,6 +24,7 @@ use tao::platform::run_return::EventLoopExtRunReturn;
 use tao::system_tray::SystemTrayBuilder;
 use crate::audio::AudioManager;
 use crate::config::{Config, EqualizerConfig, OutputSwitch, Profile};
+use crate::debouncer::{Action, Debouncer};
 use crate::devices::{BatteryLevel, Device};
 use crate::renderer::{create_display, GlutinWindowContext};
 use crate::renderer::egui_glow_tao::EguiGlow;
@@ -62,46 +65,9 @@ fn main() -> Result<()> {
 
     let mut delete_buffer: Vec<usize> = Vec::new();
     let mut next_device_poll = Instant::now();
-    let mut last_config_edit: Option<Instant> = None;
+    let mut debouncer = Debouncer::new();
     event_loop.run_return(move |event, event_loop, control_flow| {
-        if let Some(update) = last_config_edit {
-            if update.elapsed() > Duration::from_secs(10) {
-                config.save().log_ok("Could not save config");
-                last_config_edit = None;
-            }
-        }
-        if next_device_poll <= Instant::now() {
-            let (last_connected, last_battery) = (device.is_connected(), device.get_battery_status());
-            next_device_poll = Instant::now() + device.poll().unwrap();
-
-            if last_connected != device.is_connected() {
-                notification::notify(&device.get_info().name, match device.is_connected() {
-                    true => "Connected",
-                    false => "Disconnected"
-                }, Duration::from_secs(2)).log_ok("Can not create notification");
-                let switch = &config.get_headset(&device.get_info().name).switch_output;
-                apply_audio_switch(device.is_connected(), switch, &audio_manager);
-            }
-            if last_battery != device.get_battery_status() {
-                tray.set_tooltip(&match device.get_battery_status() {
-                    Some(BatteryLevel::Charging) => format!("{}\nBattery: Charging", device.get_info()),
-                    Some(BatteryLevel::Level(level)) => format!("{}\nBattery: {}%", device.get_info(), level),
-                    _ => format!("{}\nDisconnected", device.get_info())
-                });
-            }
-
-        }
-        let next_update = window
-            .as_ref()
-            .and_then(|w|w.next_repaint)
-            .map(|t| t.min(next_device_poll))
-            .unwrap_or(next_device_poll);
-        *control_flow = match next_update <= Instant::now() {
-            true => ControlFlow::Poll,
-            false => ControlFlow::WaitUntil(next_update)
-        };
         if window.as_mut().map(|w| w.handle_events(&event, |egui_ctx| {
-            let mut dirty = false;
             egui::SidePanel::new(Side::Left, "Profiles")
                 .resizable(true)
                 .width_range(175.0..=400.0)
@@ -139,7 +105,7 @@ fn main() -> Result<()> {
                             ui.selectable_label(false, RichText::from("+").heading())).inner;
                         if resp.clicked() {
                             headset.profiles.push(Profile::new(String::from("New Profile")));
-                            dirty |= true;
+                            debouncer.submit(Action::SaveConfig);
                         }
                     });
                     egui::ScrollArea::vertical()
@@ -165,7 +131,7 @@ fn main() -> Result<()> {
                             }
                             for i in delete_buffer.iter().rev() {
                                 headset.profiles.remove(*i);
-                                dirty |= true;
+                                debouncer.submit(Action::SaveConfig);
                             }
                             headset.selected_profile_index -= delete_buffer
                                 .iter()
@@ -174,7 +140,7 @@ fn main() -> Result<()> {
                                 .min(headset.selected_profile_index as usize) as u32;
                             if headset.selected_profile_index != old_profile_index {
                                 apply_profile(headset.selected_profile(), device.as_ref());
-                                dirty |= true;
+                                debouncer.submit(Action::SaveConfig);
                             }
                         });
                 });
@@ -197,7 +163,7 @@ fn main() -> Result<()> {
                                     };
                                     equalizer.set_levels(&levels)
                                         .log_ok("Could not set equalizer");
-                                    dirty |= true;
+                                    debouncer.submit(Action::SaveConfig);
                                 }
                                 ui.add_space(10.0);
                             }
@@ -207,9 +173,10 @@ fn main() -> Result<()> {
                                     .ui(ui)
                                     .on_hover_text("This setting controls how much of your voice is played back over the headset when you speak.\nSet to 0 to turn off.");
                                 if resp.changed() {
-                                    side_tone.set_level(profile.side_tone)
-                                        .log_ok("Could not set sidetone");
-                                    dirty |= true;
+                                    debouncer.submit_all([Action::SaveConfig, Action::UpdateSideTone]);
+                                }
+                                if resp.drag_released() {
+                                    debouncer.force(Action::UpdateSideTone);
                                 }
                                 ui.add_space(10.0);
                             }
@@ -220,7 +187,7 @@ fn main() -> Result<()> {
                                 if resp.changed() {
                                     mic_volume.set_level(profile.microphone_volume)
                                         .log_ok("Could not set mic level");
-                                    dirty |= true;
+                                    debouncer.submit(Action::SaveConfig);
                                 }
                                 ui.add_space(10.0);
                             }
@@ -230,7 +197,7 @@ fn main() -> Result<()> {
                                 if resp.changed() {
                                     volume_limiter.set_enabled(profile.volume_limiter)
                                         .log_ok("Could not set volume limit");
-                                    dirty |= true;
+                                    debouncer.submit(Action::SaveConfig);
                                 }
                                 ui.add_space(10.0);
                             }
@@ -243,7 +210,7 @@ fn main() -> Result<()> {
                         {
                             let switch = &mut headset.switch_output;
                             if audio_output_switch_selector(ui, switch, &audio_devices, || audio_manager.get_default_device()) {
-                                dirty |= true;
+                                debouncer.submit(Action::SaveConfig);
                                 if device.is_connected() {
                                     apply_audio_switch(true, switch, &audio_manager);
                                 }
@@ -256,7 +223,7 @@ fn main() -> Result<()> {
                         ui.heading("Application");
                         ui.add_space(7.0);
                         if ui.checkbox(&mut config.auto_apply_changes, "Auto Apply Changes").changed() {
-                            dirty |= true;
+                            debouncer.submit(Action::SaveConfig);
                         }
                         ui.with_layout(Layout::default().with_main_align(Align::Center), |ui| {
                             if ui.add_sized([200.0, 20.0], Button::new("Apply Now")).clicked(){
@@ -282,11 +249,9 @@ fn main() -> Result<()> {
                     });
                 //ui.spinner();
             });
-            if dirty {
-                last_config_edit = Some(Instant::now());
-            }
+
         })).unwrap_or(false) {
-            config.save().log_ok("Could not save config");
+            debouncer.force(Action::SaveConfig);
             window.take();
             if cfg!(debug_assertions) {
                 *control_flow = ControlFlow::Exit;
@@ -306,8 +271,55 @@ fn main() -> Result<()> {
                 if menu_id == quit_item.clone().id() {
                     *control_flow = ControlFlow::Exit;
                 }
+            },
+            Event::NewEvents(_) | Event::LoopDestroyed => {
+                for action in &mut debouncer {
+                    //match action {
+                    //    Action::SaveConfig => log::info!("Saved config"),//config.save().log_ok("Could not save config"),
+                    //    Action::UpdateSideTone => log::info!("changed sidetone"),
+                    //    Action::UpdateEqualizer => log::info!("changed sidetone"),
+                    //    Action::UpdateMicrophoneVolume => {}
+                    //    Action::UpdateVolumeLimit => {}
+                    //};
+                    log::info!("{:?}", action);
+                }
+
+                if next_device_poll <= Instant::now() {
+                    let (last_connected, last_battery) = (device.is_connected(), device.get_battery_status());
+                    next_device_poll = Instant::now() + device.poll().unwrap();
+
+                    if last_connected != device.is_connected() {
+                        notification::notify(&device.get_info().name, match device.is_connected() {
+                            true => "Connected",
+                            false => "Disconnected"
+                        }, Duration::from_secs(2)).log_ok("Can not create notification");
+                        let switch = &config.get_headset(&device.get_info().name).switch_output;
+                        apply_audio_switch(device.is_connected(), switch, &audio_manager);
+                    }
+                    if last_battery != device.get_battery_status() {
+                        tray.set_tooltip(&match device.get_battery_status() {
+                            Some(BatteryLevel::Charging) => format!("{}\nBattery: Charging", device.get_info()),
+                            Some(BatteryLevel::Level(level)) => format!("{}\nBattery: {}%", device.get_info(), level),
+                            _ => format!("{}\nDisconnected", device.get_info())
+                        });
+                    }
+                }
             }
             _ => (),
+        }
+        if !matches!(*control_flow, ControlFlow::ExitWithCode(_)) {
+            let next_window_update = window
+                .as_ref()
+                .and_then(|w|w.next_repaint);
+            let next_update = [Some(next_device_poll), next_window_update, debouncer.next_action()]
+                .into_iter()
+                .filter_map(identity)
+                .min()
+                .unwrap();
+            *control_flow = match next_update <= Instant::now() {
+                true => ControlFlow::Poll,
+                false => ControlFlow::WaitUntil(next_update)
+            };
         }
     });
     Ok(())

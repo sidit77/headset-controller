@@ -30,12 +30,12 @@ impl<T, E: Display> LogResultExt<T> for std::result::Result<T, E> {
     }
 }
 
-pub trait PeekExt<T> {
-    fn peek(self, func: impl FnOnce(&T)) -> Self;
+pub trait PeekExt<T, R> {
+    fn peek(self, func: impl FnOnce(&T) -> R) -> Self;
 }
 
-impl<T> PeekExt<T> for Option<T> {
-    fn peek(self, func: impl FnOnce(&T)) -> Self {
+impl<T, R> PeekExt<T, R> for Option<T> {
+    fn peek(self, func: impl FnOnce(&T) -> R) -> Self {
         if let Some(inner) = self.as_ref() {
             func(inner);
         }
