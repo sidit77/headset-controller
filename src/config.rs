@@ -100,8 +100,8 @@ impl Config {
         let config: Self = match Self::path().exists() {
             true => {
                 let file = std::fs::read_to_string(Self::path())?;
-                let conf = ron::from_str(&file)?;
-                conf
+                
+                ron::from_str(&file)?
             },
             false => {
                 let conf = Self::default();

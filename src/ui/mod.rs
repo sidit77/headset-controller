@@ -73,12 +73,12 @@ pub fn audio_output_switch_selector(ui: &mut Ui, switch: &mut OutputSwitch,
     if ui.checkbox(&mut enabled, "Automatic Output Switching").changed() {
         if enabled {
             let default_audio = default_device()
-                .or(audio_devices.first().cloned())
+                .or_else(||audio_devices.first().cloned())
                 .map(|d| d.name().to_string())
                 .expect("No device");
             *switch = OutputSwitch::Enabled {
                 on_connect: default_audio.clone(),
-                on_disconnect: default_audio.clone(),
+                on_disconnect: default_audio,
             };
         } else {
             *switch = OutputSwitch::Disabled;

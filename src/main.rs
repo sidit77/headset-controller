@@ -9,7 +9,7 @@ mod ui;
 mod notification;
 mod debouncer;
 
-use std::convert::identity;
+
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use anyhow::Result;

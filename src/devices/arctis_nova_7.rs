@@ -106,7 +106,7 @@ impl Device for ArcticsNova7 {
             _ =>  {
                 self.connected = true;
                 self.battery = BatteryLevel::Level({
-                    let level = report[2].min(BATTERY_MAX).max(BATTERY_MIN);
+                    let level = report[2].clamp(BATTERY_MIN, BATTERY_MAX);
                     (level - BATTERY_MIN) * (100 / (BATTERY_MAX - BATTERY_MIN))
                 });
             }
@@ -193,7 +193,7 @@ impl MicrophoneVolume for ArcticsNova7 {
 impl VolumeLimiter for ArcticsNova7 {
     fn set_enabled(&self, enabled: bool) -> Result<()> {
         log::info!("Setting volume limiter to {}", enabled);
-        self.device.write(&[0x00, 0x3a, if enabled {0x01} else {0x00}])?;
+        self.device.write(&[0x00, 0x3a, u8::from(enabled)])?;
         Ok(())
     }
 }
