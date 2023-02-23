@@ -54,6 +54,12 @@ impl Debouncer {
         }
     }
 
+    pub fn force_all(&mut self, actions: impl IntoIterator<Item=Action>) {
+        for action in actions {
+            self.force(action);
+        }
+    }
+
 }
 
 impl Iterator for Debouncer {

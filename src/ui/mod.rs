@@ -4,6 +4,7 @@ use once_cell::sync::Lazy;
 use tao::window::Icon;
 use crate::audio::AudioDevice;
 use crate::config::{EqualizerConfig, OutputSwitch};
+use crate::debouncer::{Action, Debouncer};
 use crate::devices::Equalizer;
 
 #[cfg(windows)]
@@ -22,7 +23,7 @@ pub static WINDOW_ICON: Lazy<Icon> = Lazy::new(|| {
     Icon::from_rgba(buf, info.width, info.height).unwrap()
 });
 
-pub fn equalizer(ui: &mut Ui, conf: &mut EqualizerConfig, equalizer: &dyn Equalizer) -> bool {
+pub fn equalizer(ui: &mut Ui, debouncer: &mut Debouncer, auto_update: bool, conf: &mut EqualizerConfig, equalizer: &dyn Equalizer) {
     let range = (equalizer.base_level() - equalizer.variance())..=(equalizer.base_level() + equalizer.variance());
     let mut presets = equalizer.presets().iter().map(|(s, _)| s.to_string()).collect::<Vec<_>>();
     let custom_index = presets.len();
@@ -43,6 +44,9 @@ pub fn equalizer(ui: &mut Ui, conf: &mut EqualizerConfig, equalizer: &dyn Equali
                 dirty |= true;
                 current_index = custom_index;
             }
+            if resp.drag_released() {
+                debouncer.force(Action::UpdateEqualizer);
+            }
         }
     });
     if dirty {
@@ -51,8 +55,14 @@ pub fn equalizer(ui: &mut Ui, conf: &mut EqualizerConfig, equalizer: &dyn Equali
         } else {
             EqualizerConfig::Preset(current_index as u32)
         };
+        debouncer.submit(Action::SaveConfig);
+        if auto_update {
+            debouncer.submit(Action::UpdateEqualizer);
+        }
     }
-    dirty
+    if preset.changed() {
+        debouncer.force(Action::UpdateEqualizer);
+    }
 }
 
 pub fn audio_output_switch_selector(ui: &mut Ui, switch: &mut OutputSwitch,
@@ -76,8 +86,8 @@ pub fn audio_output_switch_selector(ui: &mut Ui, switch: &mut OutputSwitch,
         dirty |= true;
     }
     if let OutputSwitch::Enabled { on_connect, on_disconnect } = switch {
-        dirty |= audio_device_selector(ui, "On Connect", on_connect, &audio_devices);
-        dirty |= audio_device_selector(ui, "On Disconnect", on_disconnect, &audio_devices);
+        dirty |= audio_device_selector(ui, "On Connect", on_connect, audio_devices);
+        dirty |= audio_device_selector(ui, "On Disconnect", on_disconnect, audio_devices);
     }
     dirty
 }

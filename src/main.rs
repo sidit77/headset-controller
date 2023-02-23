@@ -23,9 +23,9 @@ use tao::menu::{ContextMenu, MenuItemAttributes};
 use tao::platform::run_return::EventLoopExtRunReturn;
 use tao::system_tray::SystemTrayBuilder;
 use crate::audio::AudioManager;
-use crate::config::{Config, EqualizerConfig, OutputSwitch, Profile};
+use crate::config::{Config, OutputSwitch, Profile};
 use crate::debouncer::{Action, Debouncer};
-use crate::devices::{BatteryLevel, Device};
+use crate::devices::{BatteryLevel};
 use crate::renderer::{create_display, GlutinWindowContext};
 use crate::renderer::egui_glow_tao::EguiGlow;
 use crate::ui::{audio_output_switch_selector};
@@ -139,7 +139,7 @@ fn main() -> Result<()> {
                                 .count()
                                 .min(headset.selected_profile_index as usize) as u32;
                             if headset.selected_profile_index != old_profile_index {
-                                apply_profile(headset.selected_profile(), device.as_ref());
+                                submit_profile_change(&mut debouncer);
                                 debouncer.submit(Action::SaveConfig);
                             }
                         });
@@ -151,20 +151,13 @@ fn main() -> Result<()> {
                 egui::ScrollArea::both()
                     .auto_shrink([false; 2])
                     .show(ui, |ui| {
+                        let auto_update = config.auto_apply_changes;
                         let headset = config.get_headset(&device.get_info().name);
                         ui.heading("Profile");
                         {
                             let profile = headset.selected_profile();
                             if let Some(equalizer) = device.get_equalizer() {
-                                if ui::equalizer(ui, &mut profile.equalizer, equalizer) {
-                                    let levels = match &profile.equalizer {
-                                        EqualizerConfig::Preset(i) => equalizer.presets()[*i as usize].1,
-                                        EqualizerConfig::Custom(levels) => &levels
-                                    };
-                                    equalizer.set_levels(&levels)
-                                        .log_ok("Could not set equalizer");
-                                    debouncer.submit(Action::SaveConfig);
-                                }
+                                ui::equalizer(ui, &mut debouncer, auto_update, &mut profile.equalizer, equalizer);
                                 ui.add_space(10.0);
                             }
                             if let Some(side_tone) = device.get_side_tone() {
@@ -173,7 +166,10 @@ fn main() -> Result<()> {
                                     .ui(ui)
                                     .on_hover_text("This setting controls how much of your voice is played back over the headset when you speak.\nSet to 0 to turn off.");
                                 if resp.changed() {
-                                    debouncer.submit_all([Action::SaveConfig, Action::UpdateSideTone]);
+                                    debouncer.submit(Action::SaveConfig);
+                                    if auto_update {
+                                        debouncer.submit(Action::UpdateSideTone);
+                                    }
                                 }
                                 if resp.drag_released() {
                                     debouncer.force(Action::UpdateSideTone);
@@ -185,19 +181,25 @@ fn main() -> Result<()> {
                                     .text("Microphone Level")
                                     .ui(ui);
                                 if resp.changed() {
-                                    mic_volume.set_level(profile.microphone_volume)
-                                        .log_ok("Could not set mic level");
                                     debouncer.submit(Action::SaveConfig);
+                                    if auto_update {
+                                        debouncer.submit(Action::UpdateMicrophoneVolume);
+                                    }
+                                }
+                                if resp.drag_released() {
+                                    debouncer.force(Action::UpdateMicrophoneVolume);
                                 }
                                 ui.add_space(10.0);
                             }
-                            if let Some(volume_limiter) = device.get_volume_limiter() {
+                            if device.get_volume_limiter().is_some() {
                                 let resp = egui::Checkbox::new(&mut profile.volume_limiter, "Limit Volume")
                                     .ui(ui);
                                 if resp.changed() {
-                                    volume_limiter.set_enabled(profile.volume_limiter)
-                                        .log_ok("Could not set volume limit");
                                     debouncer.submit(Action::SaveConfig);
+                                    if auto_update {
+                                        debouncer.submit(Action::UpdateVolumeLimit);
+                                    }
+                                    debouncer.force(Action::UpdateVolumeLimit);
                                 }
                                 ui.add_space(10.0);
                             }
@@ -227,7 +229,7 @@ fn main() -> Result<()> {
                         }
                         ui.with_layout(Layout::default().with_main_align(Align::Center), |ui| {
                             if ui.add_sized([200.0, 20.0], Button::new("Apply Now")).clicked(){
-                                log::info!("applied");
+                                submit_profile_change(&mut debouncer);
                             }
                         });
                         ui.add_space(10.0);
@@ -292,7 +294,8 @@ fn main() -> Result<()> {
                         notification::notify(&device.get_info().name, match device.is_connected() {
                             true => "Connected",
                             false => "Disconnected"
-                        }, Duration::from_secs(2)).log_ok("Can not create notification");
+                        }, Duration::from_secs(2))
+                            .log_ok("Can not create notification");
                         let switch = &config.get_headset(&device.get_info().name).switch_output;
                         apply_audio_switch(device.is_connected(), switch, &audio_manager);
                     }
@@ -313,7 +316,7 @@ fn main() -> Result<()> {
                 .and_then(|w|w.next_repaint);
             let next_update = [Some(next_device_poll), next_window_update, debouncer.next_action()]
                 .into_iter()
-                .filter_map(identity)
+                .flatten()
                 .min()
                 .unwrap();
             *control_flow = match next_update <= Instant::now() {
@@ -325,6 +328,17 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+fn submit_profile_change(debouncer: &mut Debouncer) {
+    let actions = [
+        Action::UpdateSideTone,
+        Action::UpdateEqualizer,
+        Action::UpdateMicrophoneVolume,
+        Action::UpdateVolumeLimit
+    ];
+    debouncer.submit_all(actions);
+    debouncer.force_all(actions);
+}
+/*
 fn apply_profile(profile: &Profile, device: &dyn Device) {
     if let Some(equalizer) = device.get_equalizer() {
         let levels = match &profile.equalizer {
@@ -347,7 +361,7 @@ fn apply_profile(profile: &Profile, device: &dyn Device) {
             .log_ok("Could not set volume limit");
     }
 }
-
+*/
 fn apply_audio_switch(connected: bool, switch: &OutputSwitch, audio_manager: &AudioManager) {
     if let OutputSwitch::Enabled { on_connect, on_disconnect} = switch {
         let target = match connected {
@@ -381,9 +395,9 @@ struct EguiWindow {
 impl EguiWindow {
 
     fn new(event_loop: &EventLoopWindowTarget<()>) -> Self {
-        let (gl_window, gl) = create_display(&event_loop);
+        let (gl_window, gl) = create_display(event_loop);
         let gl = Arc::new(gl);
-        let egui_glow = EguiGlow::new(&event_loop, gl.clone(), None);
+        let egui_glow = EguiGlow::new(event_loop, gl.clone(), None);
         egui_glow.egui_ctx.set_visuals(Visuals::light());
         gl_window.window().set_visible(true);
 
@@ -431,7 +445,7 @@ impl EguiWindow {
                     _ => {}
                 }
 
-                let event_response = self.egui_glow.on_event(&event);
+                let event_response = self.egui_glow.on_event(event);
                 if event_response.repaint {
                     self.gl_window.window().request_redraw();
                 }
