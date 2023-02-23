@@ -65,7 +65,10 @@ fn main() -> Result<()> {
         .expect("Can not build system tray");
 
 
-    let mut window: Option<EguiWindow> = Some(EguiWindow::new(&event_loop, icon.clone()));
+    let mut window: Option<EguiWindow> = match std::env::args().any(|arg| arg.eq("--quiet")) {
+        true => None,
+        false => Some(EguiWindow::new(&event_loop, icon.clone()))
+    };
 
     let mut delete_buffer: Vec<usize> = Vec::new();
     let mut next_device_poll = Instant::now();
