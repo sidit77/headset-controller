@@ -15,6 +15,7 @@ use egui::panel::Side;
 use egui::{Align, Button, Layout, RichText, TextStyle, Visuals, Widget};
 use glow::Context;
 use log::LevelFilter;
+use png::Transformations;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget};
 use tao::menu::{ContextMenu, MenuItemAttributes};
@@ -28,7 +29,6 @@ use crate::renderer::{create_display, GlutinWindowContext};
 use crate::renderer::egui_glow_tao::EguiGlow;
 use crate::ui::{audio_output_switch_selector};
 use crate::util::LogResultExt;
-
 
 fn main() -> Result<()> {
     env_logger::builder()
@@ -48,17 +48,24 @@ fn main() -> Result<()> {
 
     let mut event_loop = EventLoop::new();
 
-    let icon = Icon::from_rgba(vec![0xff; 32 * 32 * 4], 32, 32).unwrap();
+    let icon = {
+        let mut decoder = png::Decoder::new(include_bytes!("../resources/icon.png").as_slice());
+        decoder.set_transformations(Transformations::EXPAND);
+        let mut reader = decoder.read_info()?;
+        let mut buf = vec![0u8; reader.output_buffer_size()];
+        let info = reader.next_frame(&mut buf)?;
+        Icon::from_rgba(buf, info.width, info.height)?
+    };
     let mut tray_menu = ContextMenu::new();
     let open_item = tray_menu.add_item(MenuItemAttributes::new("Open"));
     let quit_item = tray_menu.add_item(MenuItemAttributes::new("Quit"));
-    let mut tray = SystemTrayBuilder::new(icon, Some(tray_menu))
+    let mut tray = SystemTrayBuilder::new(icon.clone(), Some(tray_menu))
         .with_tooltip("Not Connected")
         .build(&event_loop)
         .expect("Can not build system tray");
 
 
-    let mut window: Option<EguiWindow> = Some(EguiWindow::new(&event_loop));
+    let mut window: Option<EguiWindow> = Some(EguiWindow::new(&event_loop, icon.clone()));
 
     let mut delete_buffer: Vec<usize> = Vec::new();
     let mut next_device_poll = Instant::now();
@@ -297,7 +304,7 @@ fn main() -> Result<()> {
             Event::MenuEvent { menu_id, ..} => {
                 if menu_id == open_item.clone().id() {
                     match &mut window {
-                        None => window = Some(EguiWindow::new(event_loop)),
+                        None => window = Some(EguiWindow::new(event_loop, icon.clone())),
                         Some(window) => {
                             window.gl_window.window().set_focus();
                         }
@@ -368,8 +375,8 @@ struct EguiWindow {
 
 impl EguiWindow {
 
-    fn new(event_loop: &EventLoopWindowTarget<()>) -> Self {
-        let (gl_window, gl) = create_display(&event_loop);
+    fn new(event_loop: &EventLoopWindowTarget<()>, icon: Icon) -> Self {
+        let (gl_window, gl) = create_display(&event_loop, icon);
         let gl = Arc::new(gl);
         let egui_glow = EguiGlow::new(&event_loop, gl.clone(), None);
         egui_glow.egui_ctx.set_visuals(Visuals::light());
