@@ -1471,13 +1471,16 @@ dependencies = [
  "glutin",
  "glutin-tao",
  "hidapi",
+ "ico",
  "log",
  "notify-rust",
+ "once_cell",
  "png",
  "raw-window-handle",
  "ron",
  "serde",
  "tao",
+ "tauri-winres",
  "widestring",
  "windows 0.44.0",
 ]
@@ -1526,6 +1529,16 @@ name = "humantime"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
+
+[[package]]
+name = "ico"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3804960be0bb5e4edb1e1ad67afd321a9ecfd875c3e65c099468fd2717d7cae"
+dependencies = [
+ "byteorder",
+ "png",
+]
 
 [[package]]
 name = "idna"
@@ -2644,6 +2657,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "tauri-winres"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b7a78dc04f75fb5ab815e66ac561c81e92a968a40f29e7c21afd152d694fad8"
+dependencies = [
+ "toml",
+ "version_check",
 ]
 
 [[package]]

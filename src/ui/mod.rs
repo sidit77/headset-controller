@@ -1,7 +1,26 @@
 use egui::{Ui, Widget};
+use once_cell::sync::Lazy;
+
+use tao::window::Icon;
 use crate::audio::AudioDevice;
 use crate::config::{EqualizerConfig, OutputSwitch};
 use crate::devices::Equalizer;
+
+#[cfg(windows)]
+pub static WINDOW_ICON: Lazy<Icon> = Lazy::new(|| {
+    use tao::platform::windows::IconExtWindows;
+    Icon::from_resource(32512, None).unwrap()
+});
+
+#[cfg(not(windows))]
+pub static WINDOW_ICON: Lazy<Icon> = Lazy::new(|| {
+    let mut decoder = png::Decoder::new(include_bytes!("../../resources/icon.png").as_slice());
+    decoder.set_transformations(png::Transformations::EXPAND);
+    let mut reader = decoder.read_info().unwrap();
+    let mut buf = vec![0u8; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut buf).unwrap();
+    Icon::from_rgba(buf, info.width, info.height).unwrap()
+});
 
 pub fn equalizer(ui: &mut Ui, conf: &mut EqualizerConfig, equalizer: &dyn Equalizer) -> bool {
     let range = (equalizer.base_level() - equalizer.variance())..=(equalizer.base_level() + equalizer.variance());

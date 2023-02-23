@@ -10,7 +10,7 @@ use raw_window_handle::HasRawWindowHandle;
 use tao::dpi::{LogicalSize, PhysicalSize};
 use tao::event_loop::EventLoopWindowTarget;
 use tao::platform::windows::WindowBuilderExtWindows;
-use tao::window::{Icon, Window, WindowBuilder};
+use tao::window::{Window, WindowBuilder};
 use glutin_tao::{ApiPrefence, DisplayBuilder, finalize_window};
 
 
@@ -26,7 +26,7 @@ impl GlutinWindowContext {
     // refactor this function to use `glutin-winit` crate eventually.
     // preferably add android support at the same time.
     #[allow(unsafe_code)]
-    unsafe fn new(event_loop: &EventLoopWindowTarget<()>, icon: Icon) -> Self {
+    unsafe fn new(event_loop: &EventLoopWindowTarget<()>) -> Self {
         let winit_window_builder = WindowBuilder::new()
             .with_resizable(true)
             .with_drag_and_drop(false)
@@ -34,7 +34,7 @@ impl GlutinWindowContext {
                 width: 800.0,
                 height: 600.0,
             })
-            .with_window_icon(Some(icon))
+            .with_window_icon(Some(crate::ui::WINDOW_ICON.clone()))
             .with_title("Headset Controller") // Keep hidden until we've painted something. See https://github.com/emilk/egui/pull/2279
             .with_visible(false);
 
@@ -144,8 +144,8 @@ impl GlutinWindowContext {
     }
 }
 
-pub fn create_display(event_loop: &EventLoopWindowTarget<()>, icon: Icon) -> (GlutinWindowContext, glow::Context) {
-    let glutin_window_context = unsafe { GlutinWindowContext::new(event_loop, icon) };
+pub fn create_display(event_loop: &EventLoopWindowTarget<()>) -> (GlutinWindowContext, glow::Context) {
+    let glutin_window_context = unsafe { GlutinWindowContext::new(event_loop) };
     let gl = unsafe {
         glow::Context::from_loader_function(|s| {
             let s = std::ffi::CString::new(s)
