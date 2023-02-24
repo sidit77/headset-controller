@@ -152,6 +152,19 @@ fn submit_profile_change(debouncer: &mut Debouncer) {
     debouncer.submit_all(actions);
     debouncer.force_all(actions);
 }
+
+fn submit_full_change(debouncer: &mut Debouncer) {
+    submit_profile_change(debouncer);
+    let actions = [
+        Action::UpdateMicrophoneLight,
+        Action::UpdateInactiveTime,
+        Action::UpdateBluetoothCall,
+        Action::UpdateAutoBluetooth
+    ];
+    debouncer.submit_all(actions);
+    debouncer.force_all(actions);
+}
+
 /*
 fn apply_profile(profile: &Profile, device: &dyn Device) {
     if let Some(equalizer) = device.get_equalizer() {

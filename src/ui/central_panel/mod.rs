@@ -6,7 +6,7 @@ use crate::audio::{AudioDevice, AudioManager};
 use crate::config::{Config};
 use crate::debouncer::{Action, Debouncer};
 use crate::devices::{Device};
-use crate::{submit_profile_change};
+use crate::{submit_full_change};
 use crate::ui::central_panel::headset::headset_section;
 use crate::ui::central_panel::profile::profile_section;
 
@@ -27,7 +27,7 @@ pub fn central_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config
             ui.add_space(10.0);
             ui.heading("Headset");
             ui.add_space(7.0);
-            headset_section(ui, debouncer, headset, device, audio_devices, audio_manager);
+            headset_section(ui, debouncer, auto_update, headset, device, audio_devices, audio_manager);
             ui.add_space(10.0);
             ui.separator();
             ui.add_space(10.0);
@@ -38,7 +38,7 @@ pub fn central_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config
             }
             ui.with_layout(Layout::default().with_main_align(Align::Center), |ui| {
                 if ui.add_sized([200.0, 20.0], Button::new("Apply Now")).clicked(){
-                    submit_profile_change(debouncer);
+                    submit_full_change(debouncer);
                 }
             });
             ui.add_space(10.0);

@@ -1,13 +1,13 @@
 mod side_panel;
 mod central_panel;
 
-use egui::{CentralPanel, Context, SidePanel};
+use egui::{CentralPanel, Context, Response, SidePanel};
 use egui::panel::Side;
 use once_cell::sync::Lazy;
 use tao::window::Icon;
 use crate::audio::{AudioDevice, AudioManager};
 use crate::config::{Config};
-use crate::debouncer::{Debouncer};
+use crate::debouncer::{Action, Debouncer};
 use crate::devices::{Device};
 
 use crate::ui::central_panel::central_panel;
@@ -38,3 +38,21 @@ pub fn config_ui(ctx: &Context, debouncer: &mut Debouncer, config: &mut Config, 
         .show(ctx, |ui| central_panel(ui, debouncer, config, device, audio_devices, audio_manager));
 }
 
+trait ResponseExt {
+    fn submit(self, debouncer: &mut Debouncer, auto_update: bool, action: Action) -> Self;
+}
+
+impl ResponseExt for Response {
+    fn submit(self, debouncer: &mut Debouncer, auto_update: bool, action: Action) -> Self {
+        if self.changed() {
+            debouncer.submit(Action::SaveConfig);
+            if auto_update {
+                debouncer.submit(action);
+            }
+        }
+        if self.drag_released() {
+            debouncer.force(action);
+        }
+        self
+    }
+}

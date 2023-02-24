@@ -21,7 +21,7 @@ pub enum EqualizerConfig {
     Custom(Vec<u8>)
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum CallAction {
     Nothing, ReduceVolume, Mute
 }

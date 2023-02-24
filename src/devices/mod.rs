@@ -122,7 +122,7 @@ pub trait Device {
     fn get_inactive_time(&self) -> Option<&dyn InactiveTime> {
         None
     }
-    fn get_microphone_light(&self) -> Option<&dyn MicrophoneLight> {
+    fn get_mic_light(&self) -> Option<&dyn MicrophoneLight> {
         None
     }
 }
