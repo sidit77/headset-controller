@@ -161,7 +161,7 @@ impl Device for ArcticsNova7 {
         Some(self)
     }
 
-    fn get_microphone_light(&self) -> Option<&dyn MicrophoneLight> {
+    fn get_mic_light(&self) -> Option<&dyn MicrophoneLight> {
         Some(self)
     }
 }

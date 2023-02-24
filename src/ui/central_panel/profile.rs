@@ -2,6 +2,7 @@ use egui::*;
 use crate::config::{EqualizerConfig, Profile};
 use crate::debouncer::{Action, Debouncer};
 use crate::devices::{Device, Equalizer};
+use crate::ui::ResponseExt;
 
 pub fn profile_section(ui: &mut Ui, debouncer: &mut Debouncer, auto_update: bool, profile: &mut Profile, device: &dyn Device) {
     if let Some(equalizer) = device.get_equalizer() {
@@ -9,46 +10,24 @@ pub fn profile_section(ui: &mut Ui, debouncer: &mut Debouncer, auto_update: bool
         ui.add_space(10.0);
     }
     if let Some(side_tone) = device.get_side_tone() {
-        let resp = Slider::new(&mut profile.side_tone, 0..=(side_tone.levels() - 1))
+        Slider::new(&mut profile.side_tone, 0..=(side_tone.levels() - 1))
             .text("Side Tone Level")
             .ui(ui)
-            .on_hover_text("This setting controls how much of your voice is played back over the headset when you speak.\nSet to 0 to turn off.");
-        if resp.changed() {
-            debouncer.submit(Action::SaveConfig);
-            if auto_update {
-                debouncer.submit(Action::UpdateSideTone);
-            }
-        }
-        if resp.drag_released() {
-            debouncer.force(Action::UpdateSideTone);
-        }
+            .on_hover_text("This setting controls how much of your voice is played back over the headset when you speak.\nSet to 0 to turn off.")
+            .submit(debouncer, auto_update, Action::UpdateSideTone);
         ui.add_space(10.0);
     }
     if let Some(mic_volume) = device.get_mic_volume() {
-        let resp = Slider::new(&mut profile.microphone_volume, 0..=(mic_volume.levels() - 1))
+        Slider::new(&mut profile.microphone_volume, 0..=(mic_volume.levels() - 1))
             .text("Microphone Level")
-            .ui(ui);
-        if resp.changed() {
-            debouncer.submit(Action::SaveConfig);
-            if auto_update {
-                debouncer.submit(Action::UpdateMicrophoneVolume);
-            }
-        }
-        if resp.drag_released() {
-            debouncer.force(Action::UpdateMicrophoneVolume);
-        }
+            .ui(ui)
+            .submit(debouncer, auto_update, Action::UpdateMicrophoneVolume);
         ui.add_space(10.0);
     }
     if device.get_volume_limiter().is_some() {
-        let resp = Checkbox::new(&mut profile.volume_limiter, "Limit Volume")
-            .ui(ui);
-        if resp.changed() {
-            debouncer.submit(Action::SaveConfig);
-            if auto_update {
-                debouncer.submit(Action::UpdateVolumeLimit);
-            }
-            debouncer.force(Action::UpdateVolumeLimit);
-        }
+        Checkbox::new(&mut profile.volume_limiter, "Limit Volume")
+            .ui(ui)
+            .submit(debouncer, auto_update, Action::UpdateVolumeLimit);
         ui.add_space(10.0);
     }
 

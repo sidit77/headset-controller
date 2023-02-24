@@ -5,10 +5,16 @@ use crate::util::PeekExt;
 #[derive(Debug, Clone, Copy, Key, Eq, PartialEq)]
 pub enum Action {
     SaveConfig,
+
     UpdateSideTone,
     UpdateEqualizer,
     UpdateMicrophoneVolume,
     UpdateVolumeLimit,
+
+    UpdateInactiveTime,
+    UpdateMicrophoneLight,
+    UpdateBluetoothCall,
+    UpdateAutoBluetooth
 }
 
 impl Action {

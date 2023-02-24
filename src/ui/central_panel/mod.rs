@@ -27,7 +27,7 @@ pub fn central_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config
             ui.add_space(10.0);
             ui.heading("Headset");
             ui.add_space(7.0);
-            headset_section(ui, debouncer, headset, device, audio_devices, audio_manager);
+            headset_section(ui, debouncer, auto_update, headset, device, audio_devices, audio_manager);
             ui.add_space(10.0);
             ui.separator();
             ui.add_space(10.0);

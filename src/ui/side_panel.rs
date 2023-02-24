@@ -20,7 +20,8 @@ pub fn side_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config, d
         }
         ui.add_space(10.0);
         if let Some(mix) = device.get_chat_mix() {
-            ui.label("Chat Mix:");
+            ui.label("Chat Mix:")
+                .on_hover_text("Currently doesn't do anything");
             ProgressBar::new(mix.chat as f32 / 100.0)
                 .text("Chat")
                 .ui(ui);
