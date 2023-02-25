@@ -1,4 +1,5 @@
 use std::iter::FusedIterator;
+use std::marker::PhantomData;
 use anyhow::{Result};
 use com_policy_config::{IPolicyConfig, PolicyConfigClient};
 use widestring::{U16CString};
@@ -7,6 +8,37 @@ use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Foundation::ERROR_NOT_FOUND;
 use windows::Win32::Media::Audio::{DEVICE_STATE_ACTIVE, eConsole, eRender, IMMDevice, IMMDeviceCollection, IMMDeviceEnumerator, MMDeviceEnumerator};
 use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, COINIT_MULTITHREADED, CoInitializeEx, CoTaskMemFree, CoUninitialize, STGM_READ, VT_LPWSTR};
+use windows::Win32::System::Com::StructuredStorage::PropVariantClear;
+
+#[derive(Default)]
+struct ComWrapper {
+    _ptr: PhantomData<*mut ()>,
+}
+
+thread_local!(static COM_INITIALIZED: ComWrapper = {
+    unsafe {
+        CoInitializeEx(None, COINIT_MULTITHREADED)
+            .expect("Could not initialize COM");
+        let thread = std::thread::current();
+        log::trace!("Initialized COM on thread {}", thread.name().unwrap_or(""));
+        ComWrapper::default()
+    }
+});
+
+impl Drop for ComWrapper {
+    fn drop(&mut self) {
+        unsafe {
+            CoUninitialize();
+            let thread = std::thread::current();
+            log::trace!("Uninitialized COM on thread {}", thread.name().unwrap_or(""));
+        }
+    }
+}
+
+#[inline]
+pub fn com_initialized() {
+    COM_INITIALIZED.with(|_| {});
+}
 
 #[derive(Debug, Clone)]
 pub struct AudioManager {
@@ -18,7 +50,7 @@ impl AudioManager {
 
     pub fn new() -> Result<Self> {
         unsafe {
-            CoInitializeEx(None, COINIT_MULTITHREADED)?;
+            com_initialized();
 
             let enumerator: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
             let policy_config: IPolicyConfig = CoCreateInstance(&PolicyConfigClient, None, CLSCTX_ALL)?;
@@ -63,14 +95,6 @@ impl AudioManager {
 
 }
 
-impl Drop for AudioManager {
-    fn drop(&mut self) {
-        unsafe {
-            CoUninitialize();
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 struct AudioDeviceIterator {
     device_collection: IMMDeviceCollection,
@@ -95,7 +119,8 @@ impl Iterator for AudioDeviceIterator {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.count as usize, Some(self.count as usize))
+        let remaining = (self.count - self.index) as usize;
+        (remaining, Some(remaining))
     }
 }
 
@@ -105,6 +130,7 @@ impl FusedIterator for AudioDeviceIterator {}
 
 #[derive(Debug, Clone)]
 pub struct AudioDevice {
+    device: IMMDevice,
     name: String,
     id: U16CString
 }
@@ -123,14 +149,18 @@ impl AudioDevice {
             let name = {
                 let property_store = device.OpenPropertyStore(STGM_READ)
                     .expect("Unexpected error");
-                let prop = property_store.GetValue(&PKEY_Device_FriendlyName)
+                let mut prop = property_store.GetValue(&PKEY_Device_FriendlyName)
                     .expect("Unexpected error");
-                let dynamic_type = prop.Anonymous.Anonymous;
+                let dynamic_type = &prop.Anonymous.Anonymous;
                 assert_eq!(dynamic_type.vt, VT_LPWSTR);
                 let name: PWSTR = dynamic_type.Anonymous.pwszVal;
-                String::from_utf16_lossy(name.as_wide())
+                let result = String::from_utf16_lossy(name.as_wide());
+                PropVariantClear(&mut prop)
+                    .expect("Unexpected error");
+                result
             };
             Self{
+                device,
                 name,
                 id,
             }
