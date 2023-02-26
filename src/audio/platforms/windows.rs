@@ -7,13 +7,14 @@ use anyhow::{ensure, Result};
 use com_policy_config::{IPolicyConfig, PolicyConfigClient};
 use widestring::{U16CString};
 use windows::core::{GUID, HRESULT, implement, Interface, PCWSTR, PWSTR};
+use windows::w;
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Foundation::{CloseHandle, ERROR_NOT_FOUND, HANDLE, WAIT_OBJECT_0};
 use windows::Win32::Media::Audio::{AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SESSIONFLAGS_DISPLAY_HIDE, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM, AUDCLNT_STREAMFLAGS_EVENTCALLBACK, AUDCLNT_STREAMFLAGS_LOOPBACK, AUDCLNT_STREAMFLAGS_NOPERSIST, AUDCLNT_STREAMFLAGS_RATEADJUST, AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY, AUDIO_VOLUME_NOTIFICATION_DATA, DEVICE_STATE_ACTIVE, eConsole, eRender, IAudioCaptureClient, IAudioClient, IAudioRenderClient, IMMDevice, IMMDeviceCollection, IMMDeviceEnumerator, ISimpleAudioVolume, MMDeviceEnumerator};
-use windows::Win32::Media::Audio::Endpoints::{IAudioEndpointFormatControl_Impl, IAudioEndpointVolume, IAudioEndpointVolumeCallback, IAudioEndpointVolumeCallback_Impl};
+use windows::Win32::Media::Audio::Endpoints::{IAudioEndpointVolume, IAudioEndpointVolumeCallback, IAudioEndpointVolumeCallback_Impl};
 use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, COINIT_MULTITHREADED, CoInitializeEx, CoTaskMemFree, CoUninitialize, STGM_READ, VT_LPWSTR};
 use windows::Win32::System::Com::StructuredStorage::PropVariantClear;
-use windows::Win32::System::Threading::{CREATE_EVENT, CreateEventExW, EVENT_MODIFY_STATE, SetEvent, SYNCHRONIZATION_SYNCHRONIZE, WaitForMultipleObjects};
+use windows::Win32::System::Threading::{AvRevertMmThreadCharacteristics, AvSetMmThreadCharacteristicsW, CREATE_EVENT, CreateEventExW, EVENT_MODIFY_STATE, SetEvent, SYNCHRONIZATION_SYNCHRONIZE, WaitForMultipleObjects};
 use windows::Win32::System::WindowsProgramming::INFINITE;
 use crate::util::LogResultExt;
 
@@ -263,6 +264,32 @@ impl Drop for VolumeSync {
     }
 }
 
+struct AudioThreadHandle {
+    handle: HANDLE,
+    task_id: u32
+}
+
+impl Drop for AudioThreadHandle {
+    fn drop(&mut self) {
+        unsafe {
+            AvRevertMmThreadCharacteristics(self.handle)
+                .ok()
+                .log_ok("Could not revert to normal thread");
+        }
+    }
+}
+
+fn mark_audio_thread() -> Result<AudioThreadHandle> {
+    let mut task_id = 0;
+    let handle = unsafe {
+        AvSetMmThreadCharacteristicsW(w!("Audio"), &mut task_id)?
+    };
+    Ok(AudioThreadHandle {
+        handle,
+        task_id,
+    })
+}
+
 pub struct AudioLoopback {
     stop_event: HANDLE,
     volume_sync: VolumeSync,
@@ -282,7 +309,8 @@ impl AudioLoopback {
             let sound_buffer_duration = 10000000;
 
             src_audio_client.Initialize(AUDCLNT_SHAREMODE_SHARED,
-                                        AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_NOPERSIST | AUDCLNT_SESSIONFLAGS_DISPLAY_HIDE,
+                                        AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
+                                            AUDCLNT_STREAMFLAGS_NOPERSIST | AUDCLNT_SESSIONFLAGS_DISPLAY_HIDE,
                                         sound_buffer_duration,
                                         0,
                                         format.ptr(),
@@ -312,6 +340,8 @@ impl AudioLoopback {
                 .name("loopback audio router".to_string())
                 .spawn(move || {
                     com_initialized();
+                    let _handle = mark_audio_thread()
+                        .log_ok("Could not mark as audio thread");
 
                     src_audio_client.Start().unwrap();
                     dst_audio_client.Start().unwrap();
