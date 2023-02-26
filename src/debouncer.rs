@@ -14,7 +14,9 @@ pub enum Action {
     UpdateInactiveTime,
     UpdateMicrophoneLight,
     UpdateBluetoothCall,
-    UpdateAutoBluetooth
+    UpdateAutoBluetooth,
+
+    UpdateSystemAudio
 }
 
 impl Action {

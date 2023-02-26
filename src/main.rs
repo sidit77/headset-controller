@@ -21,8 +21,8 @@ use tao::event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget};
 use tao::menu::{ContextMenu, MenuItemAttributes};
 use tao::platform::run_return::EventLoopExtRunReturn;
 use tao::system_tray::SystemTrayBuilder;
-use crate::audio::AudioManager;
-use crate::config::{Config, OutputSwitch};
+use crate::audio::AudioSystem;
+use crate::config::Config;
 use crate::debouncer::{Action, Debouncer};
 use crate::devices::{BatteryLevel};
 use crate::renderer::{create_display, GlutinWindowContext};
@@ -38,10 +38,7 @@ fn main() -> Result<()> {
 
     let mut config = Config::load()?;
 
-    let audio_manager = AudioManager::new()?;
-    let audio_devices = audio_manager
-        .devices()
-        .collect::<Vec<_>>();
+    let mut audio_system = AudioSystem::new();
 
     let mut device = devices::find_device().unwrap();
 
@@ -65,7 +62,7 @@ fn main() -> Result<()> {
     let mut debouncer = Debouncer::new();
     event_loop.run_return(move |event, event_loop, control_flow| {
         if window.as_mut().map(|w| w.handle_events(&event, |egui_ctx| {
-            ui::config_ui(egui_ctx, &mut debouncer, &mut config, device.as_ref(), &audio_devices, &audio_manager);
+            ui::config_ui(egui_ctx, &mut debouncer, &mut config, device.as_ref(), &mut audio_system);
         })).unwrap_or(false) {
             debouncer.force(Action::SaveConfig);
             window.take();
@@ -77,6 +74,7 @@ fn main() -> Result<()> {
         match event {
             Event::MenuEvent { menu_id, ..} => {
                 if menu_id == open_item.clone().id() {
+                    audio_system.refresh_devices();
                     match &mut window {
                         None => window = Some(EguiWindow::new(event_loop)),
                         Some(window) => {
@@ -89,6 +87,7 @@ fn main() -> Result<()> {
                 }
             },
             Event::NewEvents(_) | Event::LoopDestroyed => {
+                let headset = config.get_headset(&device.get_info().name);
                 for action in &mut debouncer {
                     //match action {
                     //    Action::SaveConfig => log::info!("Saved config"),//config.save().log_ok("Could not save config"),
@@ -98,6 +97,10 @@ fn main() -> Result<()> {
                     //    Action::UpdateVolumeLimit => {}
                     //};
                     log::info!("{:?}", action);
+                    match action {
+                        Action::UpdateSystemAudio => audio_system.apply(&headset.os_audio, device.is_connected()),
+                        _ => {}
+                    }
                 }
 
                 if next_device_poll <= Instant::now() {
@@ -110,8 +113,10 @@ fn main() -> Result<()> {
                             false => "Disconnected"
                         }, Duration::from_secs(2))
                             .log_ok("Can not create notification");
-                        let switch = &config.get_headset(&device.get_info().name).switch_output;
-                        apply_audio_switch(device.is_connected(), switch, &audio_manager);
+                        //let switch = &config.get_headset(&device.get_info().name).os_audio;
+                        //apply_audio_switch(device.is_connected(), switch, &audio_manager);
+                        debouncer.submit(Action::UpdateSystemAudio);
+                        debouncer.force(Action::UpdateSystemAudio);
                     }
                     if last_battery != device.get_battery_status() {
                         tray.set_tooltip(&match device.get_battery_status() {
@@ -159,7 +164,8 @@ fn submit_full_change(debouncer: &mut Debouncer) {
         Action::UpdateMicrophoneLight,
         Action::UpdateInactiveTime,
         Action::UpdateBluetoothCall,
-        Action::UpdateAutoBluetooth
+        Action::UpdateAutoBluetooth,
+        Action::UpdateSystemAudio
     ];
     debouncer.submit_all(actions);
     debouncer.force_all(actions);
@@ -189,28 +195,7 @@ fn apply_profile(profile: &Profile, device: &dyn Device) {
     }
 }
 */
-fn apply_audio_switch(connected: bool, switch: &OutputSwitch, audio_manager: &AudioManager) {
-    if let OutputSwitch::Enabled { on_connect, on_disconnect} = switch {
-        let target = match connected {
-            true => on_connect,
-            false => on_disconnect
-        };
-        if let Some(device) = audio_manager
-            .devices()
-            .find(|dev| dev.name() == target) {
-            match audio_manager
-                .get_default_device()
-                .map(|dev|dev == device)
-                .unwrap_or(false) {
-                true => log::info!("Device \"{}\" is already active", device.name()),
-                false => {
-                    audio_manager.set_default_device(&device)
-                        .log_ok("Could not change default audio device");
-                }
-            }
-        }
-    }
-}
+
 
 struct EguiWindow {
     gl_window: GlutinWindowContext,

@@ -1,12 +1,11 @@
 use egui::*;
-use crate::apply_audio_switch;
-use crate::audio::{AudioDevice, AudioManager};
-use crate::config::{CallAction, HeadsetConfig, OutputSwitch};
+use crate::audio::{AudioDevice, AudioSystem};
+use crate::config::{CallAction, HeadsetConfig, OsAudio};
 use crate::debouncer::{Action, Debouncer};
 use crate::devices::Device;
 use crate::ui::ResponseExt;
 
-pub fn headset_section(ui: &mut Ui, debouncer: &mut Debouncer, auto_update: bool, headset: &mut HeadsetConfig, device: &dyn Device, audio_devices: &[AudioDevice], audio_manager: &AudioManager) {
+pub fn headset_section(ui: &mut Ui, debouncer: &mut Debouncer, auto_update: bool, headset: &mut HeadsetConfig, device: &dyn Device, audio_system: &mut AudioSystem) {
     if device.get_inactive_time().is_some() {
         ui.horizontal(|ui| {
             DragValue::new(&mut headset.inactive_time)
@@ -47,39 +46,42 @@ pub fn headset_section(ui: &mut Ui, debouncer: &mut Debouncer, auto_update: bool
     }
 
     ui.add_space(10.0);
-    let switch = &mut headset.switch_output;
-    if audio_output_switch_selector(ui, switch, audio_devices, || audio_manager.get_default_device()) {
+    let switch = &mut headset.os_audio;
+    if audio_output_switch_selector(ui, switch, audio_system) {
         debouncer.submit(Action::SaveConfig);
-        if device.is_connected() {
-            apply_audio_switch(true, switch, audio_manager);
+        if auto_update {
+            debouncer.submit(Action::UpdateSystemAudio);
+            debouncer.force(Action::UpdateSystemAudio);
         }
     }
     ui.add_space(10.0);
 }
 
-fn audio_output_switch_selector(ui: &mut Ui, switch: &mut OutputSwitch,
-                                audio_devices: &[AudioDevice],
-                                default_device: impl FnOnce() -> Option<AudioDevice>) -> bool {
+fn audio_output_switch_selector(ui: &mut Ui, switch: &mut OsAudio, audio_system: &mut AudioSystem) -> bool {
     let mut dirty = false;
-    let mut enabled = *switch != OutputSwitch::Disabled;
+    let mut enabled = *switch != OsAudio::Disabled;
     if ui.checkbox(&mut enabled, "Automatic Output Switching").changed() {
         if enabled {
-            let default_audio = default_device()
-                .or_else(||audio_devices.first().cloned())
+            audio_system.refresh_devices();
+            let default_audio = audio_system
+                .default_device()
+                .or_else(||audio_system
+                    .devices()
+                    .first())
                 .map(|d| d.name().to_string())
                 .expect("No device");
-            *switch = OutputSwitch::Enabled {
+            *switch = OsAudio::ChangeDefault {
                 on_connect: default_audio.clone(),
                 on_disconnect: default_audio,
             };
         } else {
-            *switch = OutputSwitch::Disabled;
+            *switch = OsAudio::Disabled;
         }
         dirty |= true;
     }
-    if let OutputSwitch::Enabled { on_connect, on_disconnect } = switch {
-        dirty |= audio_device_selector(ui, "On Connect", on_connect, audio_devices);
-        dirty |= audio_device_selector(ui, "On Disconnect", on_disconnect, audio_devices);
+    if let OsAudio::ChangeDefault { on_connect, on_disconnect } = switch {
+        dirty |= audio_device_selector(ui, "On Connect", on_connect, audio_system.devices());
+        dirty |= audio_device_selector(ui, "On Disconnect", on_disconnect, audio_system.devices());
     }
     dirty
 }

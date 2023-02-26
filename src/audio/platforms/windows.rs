@@ -266,7 +266,7 @@ impl Drop for VolumeSync {
 
 struct AudioThreadHandle {
     handle: HANDLE,
-    task_id: u32
+    _task_id: u32
 }
 
 impl Drop for AudioThreadHandle {
@@ -286,13 +286,13 @@ fn mark_audio_thread() -> Result<AudioThreadHandle> {
     };
     Ok(AudioThreadHandle {
         handle,
-        task_id,
+        _task_id: task_id,
     })
 }
 
 pub struct AudioLoopback {
     stop_event: HANDLE,
-    volume_sync: VolumeSync,
+    _volume_sync: VolumeSync,
     audio_thread: Option<JoinHandle<()>>
 }
 
@@ -361,7 +361,7 @@ impl AudioLoopback {
             })?);
             AudioLoopback {
                 stop_event,
-                volume_sync,
+                _volume_sync: volume_sync,
                 audio_thread,
             }
         })

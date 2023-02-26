@@ -6,13 +6,17 @@ use directories_next::BaseDirs;
 use ron::ser::{PrettyConfig, to_string_pretty};
 
 #[derive(Default, Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub enum OutputSwitch {
+pub enum OsAudio {
     #[default]
     Disabled,
-    Enabled {
+    ChangeDefault {
         on_connect: String,
         on_disconnect: String
-    }
+    },
+    RouteAudio {
+        src: String,
+        dst: String
+    },
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -51,7 +55,7 @@ impl Profile {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeadsetConfig {
-    pub switch_output: OutputSwitch,
+    pub os_audio: OsAudio,
     pub mic_light: u8,
     pub bluetooth_call: CallAction,
     pub auto_enable_bluetooth: bool,
@@ -63,7 +67,7 @@ pub struct HeadsetConfig {
 impl Default for HeadsetConfig {
     fn default() -> Self {
         Self {
-            switch_output: Default::default(),
+            os_audio: Default::default(),
             mic_light: 0,
             bluetooth_call: CallAction::Nothing,
             auto_enable_bluetooth: false,

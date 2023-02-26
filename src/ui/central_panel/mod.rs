@@ -2,7 +2,7 @@ mod profile;
 mod headset;
 
 use egui::*;
-use crate::audio::{AudioDevice, AudioManager};
+use crate::audio::AudioSystem;
 use crate::config::{Config};
 use crate::debouncer::{Action, Debouncer};
 use crate::devices::{Device};
@@ -10,7 +10,7 @@ use crate::{submit_full_change};
 use crate::ui::central_panel::headset::headset_section;
 use crate::ui::central_panel::profile::profile_section;
 
-pub fn central_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config, device: &dyn Device, audio_devices: &[AudioDevice], audio_manager: &AudioManager) {
+pub fn central_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config, device: &dyn Device, audio_system: &mut AudioSystem) {
     ui.style_mut().text_styles.get_mut(&TextStyle::Heading).unwrap().size = 25.0;
     ui.style_mut().text_styles.get_mut(&TextStyle::Body).unwrap().size = 14.0;
     ui.style_mut().text_styles.get_mut(&TextStyle::Button).unwrap().size = 14.0;
@@ -27,7 +27,7 @@ pub fn central_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config
             ui.add_space(10.0);
             ui.heading("Headset");
             ui.add_space(7.0);
-            headset_section(ui, debouncer, auto_update, headset, device, audio_devices, audio_manager);
+            headset_section(ui, debouncer, auto_update, headset, device, audio_system);
             ui.add_space(10.0);
             ui.separator();
             ui.add_space(10.0);
