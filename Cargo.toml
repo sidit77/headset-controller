@@ -48,6 +48,7 @@ version = "0.44.0"
 features = [
     "Win32_Foundation",
     "Win32_Media_Audio",
+    "Win32_Media_Audio_Endpoints",
     "Win32_System_Com",
     "Win32_UI_Shell_PropertiesSystem",
     "Win32_Security",

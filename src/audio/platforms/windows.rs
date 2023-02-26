@@ -1,20 +1,21 @@
 use std::iter::FusedIterator;
 use std::marker::PhantomData;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::{ptr, thread};
 use std::ops::Deref;
 use std::thread::JoinHandle;
 use anyhow::{ensure, Result};
 use com_policy_config::{IPolicyConfig, PolicyConfigClient};
 use widestring::{U16CString};
-use windows::core::{HRESULT, Interface, PCWSTR, PWSTR};
+use windows::core::{GUID, HRESULT, implement, Interface, PCWSTR, PWSTR};
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
-use windows::Win32::Foundation::{CloseHandle, ERROR_NOT_FOUND};
-use windows::Win32::Media::Audio::{AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM, AUDCLNT_STREAMFLAGS_EVENTCALLBACK, AUDCLNT_STREAMFLAGS_LOOPBACK, AUDCLNT_STREAMFLAGS_RATEADJUST, AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY, DEVICE_STATE_ACTIVE, eConsole, eRender, IAudioCaptureClient, IAudioClient, IAudioRenderClient, IMMDevice, IMMDeviceCollection, IMMDeviceEnumerator, MMDeviceEnumerator};
+use windows::Win32::Foundation::{CloseHandle, ERROR_NOT_FOUND, HANDLE, WAIT_OBJECT_0};
+use windows::Win32::Media::Audio::{AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SESSIONFLAGS_DISPLAY_HIDE, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM, AUDCLNT_STREAMFLAGS_EVENTCALLBACK, AUDCLNT_STREAMFLAGS_LOOPBACK, AUDCLNT_STREAMFLAGS_NOPERSIST, AUDCLNT_STREAMFLAGS_RATEADJUST, AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY, AUDIO_VOLUME_NOTIFICATION_DATA, DEVICE_STATE_ACTIVE, eConsole, eRender, IAudioCaptureClient, IAudioClient, IAudioRenderClient, IMMDevice, IMMDeviceCollection, IMMDeviceEnumerator, ISimpleAudioVolume, MMDeviceEnumerator};
+use windows::Win32::Media::Audio::Endpoints::{IAudioEndpointFormatControl_Impl, IAudioEndpointVolume, IAudioEndpointVolumeCallback, IAudioEndpointVolumeCallback_Impl};
 use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, COINIT_MULTITHREADED, CoInitializeEx, CoTaskMemFree, CoUninitialize, STGM_READ, VT_LPWSTR};
 use windows::Win32::System::Com::StructuredStorage::PropVariantClear;
-use windows::Win32::System::Threading::{CREATE_EVENT, CreateEventExW, EVENT_MODIFY_STATE, SYNCHRONIZATION_SYNCHRONIZE, WaitForSingleObject};
+use windows::Win32::System::Threading::{CREATE_EVENT, CreateEventExW, EVENT_MODIFY_STATE, SetEvent, SYNCHRONIZATION_SYNCHRONIZE, WaitForMultipleObjects};
+use windows::Win32::System::WindowsProgramming::INFINITE;
+use crate::util::LogResultExt;
 
 #[derive(Default)]
 struct ComWrapper {
@@ -219,9 +220,53 @@ impl<T> Drop for ComPtr<T> {
     }
 }
 
+#[implement(IAudioEndpointVolumeCallback)]
+struct AudioEndpointVolumeCallback(ISimpleAudioVolume);
+
+impl IAudioEndpointVolumeCallback_Impl for AudioEndpointVolumeCallback {
+    fn OnNotify(&self, pnotify: *mut AUDIO_VOLUME_NOTIFICATION_DATA) -> windows::core::Result<()> {
+        unsafe {
+            let notify = pnotify.read();
+            self.0.SetMasterVolume(notify.fMasterVolume, &notify.guidEventContext)?;
+            self.0.SetMute(notify.bMuted, &notify.guidEventContext)?;
+        }
+        Ok(())
+    }
+}
+
+struct VolumeSync {
+    callback: IAudioEndpointVolumeCallback,
+    audio_volume: IAudioEndpointVolume
+}
+
+impl VolumeSync {
+    fn new(src_volume: IAudioEndpointVolume, dst_volume: ISimpleAudioVolume) -> Result<Self> {
+        unsafe {
+            dst_volume.SetMasterVolume(src_volume.GetMasterVolumeLevelScalar()?, &GUID::default())?;
+            dst_volume.SetMute(src_volume.GetMute()?, &GUID::default())?;
+            let callback: IAudioEndpointVolumeCallback = AudioEndpointVolumeCallback(dst_volume).into();
+            src_volume.RegisterControlChangeNotify(&callback)?;
+            Ok(Self {
+                callback,
+                audio_volume: src_volume
+            })
+        }
+    }
+}
+
+impl Drop for VolumeSync {
+    fn drop(&mut self) {
+        unsafe {
+            self.audio_volume.UnregisterControlChangeNotify(&self.callback)
+                .log_ok("Error removing volume control handler");
+        }
+    }
+}
+
 pub struct AudioLoopback {
-    should_stop: Arc<AtomicBool>,
-    audio_thread: JoinHandle<()>
+    stop_event: HANDLE,
+    volume_sync: VolumeSync,
+    audio_thread: Option<JoinHandle<()>>
 }
 
 impl AudioLoopback {
@@ -237,7 +282,7 @@ impl AudioLoopback {
             let sound_buffer_duration = 10000000;
 
             src_audio_client.Initialize(AUDCLNT_SHAREMODE_SHARED,
-                                        AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+                                        AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_NOPERSIST | AUDCLNT_SESSIONFLAGS_DISPLAY_HIDE,
                                         sound_buffer_duration,
                                         0,
                                         format.ptr(),
@@ -250,66 +295,96 @@ impl AudioLoopback {
                                         format.ptr(),
                                         None)?;
 
+            let dst_audio_volume: ISimpleAudioVolume = src_audio_client.GetService()?;
+            let src_volume: IAudioEndpointVolume = src.device.Activate(CLSCTX_ALL, None)?;
+            let volume_sync = VolumeSync::new(src_volume, dst_audio_volume)?;
+
             let capture_client = ComObj::<IAudioCaptureClient>(src_audio_client.GetService()?);
             let render_client = ComObj::<IAudioRenderClient>(dst_audio_client.GetService()?);
 
+            let stop_event = CreateEventExW(None, None, CREATE_EVENT(0),
+                                              (EVENT_MODIFY_STATE | SYNCHRONIZATION_SYNCHRONIZE).0)?;
             let buffer_event = CreateEventExW(None, None, CREATE_EVENT(0),
                                               (EVENT_MODIFY_STATE | SYNCHRONIZATION_SYNCHRONIZE).0)?;
             src_audio_client.SetEventHandle(buffer_event)?;
             
-            let should_quit = Arc::new(AtomicBool::new(false));
-            let should_quit2 = should_quit.clone();
-            
-            let audio_thread = thread::Builder::new()
+            let audio_thread = Some(thread::Builder::new()
                 .name("loopback audio router".to_string())
                 .spawn(move || {
                     com_initialized();
 
                     src_audio_client.Start().unwrap();
                     dst_audio_client.Start().unwrap();
-                    while !should_quit.load(Ordering::Relaxed) {
-                        WaitForSingleObject(buffer_event, 1000);
-                        let mut packet_length  = capture_client.GetNextPacketSize().unwrap();
-                        while packet_length != 0 {
-                            let mut buffer = ptr::null_mut();
-                            let mut flags = 0;
-                            let mut frames_available = 0;
-                            capture_client.GetBuffer(&mut buffer,
-                                                     &mut frames_available,
-                                                     &mut flags,
-                                                     None,
-                                                     None).unwrap();
-                            let silence = flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 != 0;
-                            {
-                                let play_buffer = render_client.GetBuffer(frames_available).unwrap();
-                                let buffer_len = (frames_available * bytes_per_frame) as usize;
-                                if silence {
-                                    ptr::write_bytes(buffer, 0, buffer_len)
-                                } else {
-                                    ptr::copy(buffer, play_buffer, buffer_len);
-                                }
-
-                                render_client.ReleaseBuffer(frames_available, 0).unwrap();
-                            }
-
-                            capture_client.ReleaseBuffer(frames_available).unwrap();
-                            packet_length = capture_client.GetNextPacketSize().unwrap();
+                    loop {
+                        let wait_result = WaitForMultipleObjects(&[buffer_event, stop_event], false, INFINITE);
+                        match wait_result.0 - WAIT_OBJECT_0.0 {
+                            0 => copy_data(&capture_client, &render_client, bytes_per_frame).unwrap(),
+                            1 => break,
+                            _ => wait_result.ok().unwrap()
                         }
                     }
-                    CloseHandle(buffer_event).ok().unwrap();
+                    CloseHandle(buffer_event)
+                        .ok()
+                        .log_ok("Could not delete buffer event");
                     src_audio_client.Stop().unwrap();
                     dst_audio_client.Stop().unwrap();
-            })?;
+            })?);
             AudioLoopback {
-                should_stop: should_quit2,
+                stop_event,
+                volume_sync,
                 audio_thread,
             }
         })
     }
 
-    pub fn stop(self) {
-        self.should_stop.store(true, Ordering::Relaxed);
-        self.audio_thread.join().unwrap();
+    pub fn stop(&self) {
+        unsafe {
+            SetEvent(self.stop_event)
+                .ok()
+                .log_ok("Could not set stop event");
+        }
     }
 
+}
+
+impl Drop for AudioLoopback {
+    fn drop(&mut self) {
+        self.stop();
+        if let Some(thread) = self.audio_thread.take() {
+            thread.join().unwrap();
+        }
+        unsafe {
+            CloseHandle(self.stop_event)
+                .ok()
+                .log_ok("Could not delete stop event");
+        }
+    }
+}
+
+unsafe fn copy_data(src: &IAudioCaptureClient, dst: &IAudioRenderClient, bytes_per_frame: u32) -> Result<()> {
+    let mut packet_length  = src.GetNextPacketSize()?;
+    while packet_length != 0 {
+        let mut buffer = ptr::null_mut();
+        let mut flags = 0;
+        let mut frames_available = 0;
+        src.GetBuffer(&mut buffer,
+                      &mut frames_available,
+                      &mut flags,
+                      None,
+                      None)?;
+        let silence = flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 != 0;
+        {
+            let play_buffer = dst.GetBuffer(frames_available)?;
+            let buffer_len = (frames_available * bytes_per_frame) as usize;
+            if !silence {
+                ptr::copy(buffer, play_buffer, buffer_len);
+            }
+            flags &= AUDCLNT_BUFFERFLAGS_SILENT.0 as u32;
+            dst.ReleaseBuffer(frames_available, flags)?;
+        }
+
+        src.ReleaseBuffer(frames_available)?;
+        packet_length = src.GetNextPacketSize()?;
+    }
+    Ok(())
 }
