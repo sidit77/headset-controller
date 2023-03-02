@@ -54,9 +54,10 @@ impl AudioSystem {
 
     pub fn apply(&mut self, audio_config: &OsAudio, connected: bool) {
         self.refresh_devices();
+        self.loopback = None;
         if let Ok(manager) = &self.manager {
             match audio_config {
-                OsAudio::Disabled => {}
+                OsAudio::Disabled => { }
                 OsAudio::ChangeDefault { on_connect, on_disconnect } => {
                     let target = match connected {
                         true => on_connect,
@@ -79,9 +80,7 @@ impl AudioSystem {
                     }
                 }
                 OsAudio::RouteAudio { src, dst } => {
-                    if connected {
-                        self.loopback = None;
-                    } else {
+                    if !connected {
                         let src = self
                             .devices()
                             .iter()
