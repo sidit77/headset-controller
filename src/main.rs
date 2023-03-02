@@ -22,9 +22,9 @@ use tao::menu::{ContextMenu, MenuItemAttributes};
 use tao::platform::run_return::EventLoopExtRunReturn;
 use tao::system_tray::SystemTrayBuilder;
 use crate::audio::AudioSystem;
-use crate::config::Config;
+use crate::config::{Config, EqualizerConfig, HeadsetConfig};
 use crate::debouncer::{Action, Debouncer};
-use crate::devices::{BatteryLevel};
+use crate::devices::{BatteryLevel, Device};
 use crate::renderer::{create_display, GlutinWindowContext};
 use crate::renderer::egui_glow_tao::EguiGlow;
 use crate::util::LogResultExt;
@@ -52,7 +52,6 @@ fn main() -> Result<()> {
         .build(&event_loop)
         .expect("Can not build system tray");
 
-
     let mut window: Option<EguiWindow> = match std::env::args().any(|arg| arg.eq("--quiet")) {
         true => None,
         false => Some(EguiWindow::new(&event_loop))
@@ -60,6 +59,7 @@ fn main() -> Result<()> {
 
     let mut next_device_poll = Instant::now();
     let mut debouncer = Debouncer::new();
+    debouncer.submit(Action::UpdateSystemAudio);
     event_loop.run_return(move |event, event_loop, control_flow| {
         if window.as_mut().map(|w| w.handle_events(&event, |egui_ctx| {
             ui::config_ui(egui_ctx, &mut debouncer, &mut config, device.as_ref(), &mut audio_system);
@@ -87,20 +87,23 @@ fn main() -> Result<()> {
                 }
             },
             Event::NewEvents(_) | Event::LoopDestroyed => {
-                let headset = config.get_headset(&device.get_info().name);
                 for action in &mut debouncer {
-                    //match action {
-                    //    Action::SaveConfig => log::info!("Saved config"),//config.save().log_ok("Could not save config"),
-                    //    Action::UpdateSideTone => log::info!("changed sidetone"),
-                    //    Action::UpdateEqualizer => log::info!("changed sidetone"),
-                    //    Action::UpdateMicrophoneVolume => {}
-                    //    Action::UpdateVolumeLimit => {}
-                    //};
-                    log::info!("{:?}", action);
+                    log::trace!("Activated action: {:?}", action);
                     match action {
-                        Action::UpdateSystemAudio => audio_system.apply(&headset.os_audio, device.is_connected()),
-                        _ => {}
+                        Action::UpdateSystemAudio => {
+                            let headset = config.get_headset(&device.get_info().name);
+                            audio_system.apply(&headset.os_audio, device.is_connected())
+                        },
+                        Action::SaveConfig => {
+                            config.save()
+                                .log_ok("Could not save config");
+                        },
+                        action => {
+                            let headset = config.get_headset(&device.get_info().name);
+                            apply_config_to_device(action, device.as_ref(), headset)
+                        }
                     }
+
                 }
 
                 if next_device_poll <= Instant::now() {
@@ -113,8 +116,6 @@ fn main() -> Result<()> {
                             false => "Disconnected"
                         }, Duration::from_secs(2))
                             .log_ok("Can not create notification");
-                        //let switch = &config.get_headset(&device.get_info().name).os_audio;
-                        //apply_audio_switch(device.is_connected(), switch, &audio_manager);
                         debouncer.submit(Action::UpdateSystemAudio);
                         debouncer.force(Action::UpdateSystemAudio);
                     }
@@ -169,6 +170,53 @@ fn submit_full_change(debouncer: &mut Debouncer) {
     ];
     debouncer.submit_all(actions);
     debouncer.force_all(actions);
+}
+
+fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut HeadsetConfig) {
+    if device.is_connected() {
+        match action {
+            Action::UpdateSideTone => if let Some(sidetone) = device.get_side_tone() {
+                sidetone.set_level(headset.selected_profile().side_tone)
+                    .log_ok("Can not apply side tone");
+            }
+            Action::UpdateEqualizer => if let Some(equalizer) = device.get_equalizer() {
+                let levels = match headset.selected_profile().equalizer.clone() {
+                    EqualizerConfig::Preset(i) => equalizer
+                        .presets().get(i as usize)
+                        .expect("Unknown preset").1
+                        .to_vec(),
+                    EqualizerConfig::Custom(levels) => levels,
+                };
+                equalizer.set_levels(&levels)
+                    .log_ok("Could not apply equalizer");
+            }
+            Action::UpdateMicrophoneVolume => if let Some(mic_volume) = device.get_mic_volume() {
+                mic_volume.set_level(headset.selected_profile().microphone_volume)
+                    .log_ok("Could not apply microphone volume");
+            }
+            Action::UpdateVolumeLimit => if let Some(volume_limiter) = device.get_volume_limiter() {
+                volume_limiter.set_enabled(headset.selected_profile().volume_limiter)
+                    .log_ok("Could not apply volume limited");
+            }
+            Action::UpdateInactiveTime => if let Some(inactive_time) = device.get_inactive_time() {
+                inactive_time.set_inactive_time(headset.inactive_time)
+                    .log_ok("Could not apply inactive time");
+            }
+            Action::UpdateMicrophoneLight => if let Some(mic_light) = device.get_mic_light() {
+                mic_light.set_light_strength(headset.mic_light)
+                    .log_ok("Could not apply microphone light");
+            }
+            Action::UpdateBluetoothCall => if let Some(bluetooth_config) = device.get_bluetooth_config() {
+                bluetooth_config.set_auto_enabled(headset.auto_enable_bluetooth)
+                    .log_ok("Could not set bluetooth auto enabled");
+            }
+            Action::UpdateAutoBluetooth => if let Some(bluetooth_config) = device.get_bluetooth_config() {
+                bluetooth_config.set_call_action(headset.bluetooth_call)
+                    .log_ok("Could not set call action");
+            }
+            Action::SaveConfig | Action::UpdateSystemAudio => log::warn!("{:?} is not related to the device", action)
+        }
+    }
 }
 
 /*
