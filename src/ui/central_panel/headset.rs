@@ -81,7 +81,7 @@ fn audio_output_switch_selector(ui: &mut Ui, switch: &mut OsAudio, audio_system:
             let options = [
                 OsAudio::Disabled,
                 OsAudio::ChangeDefault { on_connect: default_device.clone(), on_disconnect: default_device.clone() },
-                OsAudio::RouteAudio { src: default_device.clone(), dst: default_device.clone() }
+                OsAudio::RouteAudio { src: default_device.clone(), dst: default_device }
             ];
             for option in options {
                 let current = std::mem::discriminant(switch) == std::mem::discriminant(&option);

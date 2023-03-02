@@ -98,7 +98,7 @@ mod autostart {
 
     fn start_cmd() -> Result<OsString> {
         let mut cmd = OsString::from("\"");
-        let mut exe_dir = dunce::canonicalize(std::env::current_exe()?)?;
+        let exe_dir = dunce::canonicalize(std::env::current_exe()?)?;
         cmd.push(exe_dir);
         cmd.push("\"  --quiet");
         Ok(cmd)
