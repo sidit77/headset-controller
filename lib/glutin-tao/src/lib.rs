@@ -10,8 +10,6 @@
 
 mod window;
 
-pub use window::GlWindow;
-
 use std::error::Error;
 
 use glutin::config::{Config, ConfigTemplateBuilder};
@@ -19,20 +17,17 @@ use glutin::display::{Display, DisplayApiPreference};
 #[cfg(x11_platform)]
 use glutin::platform::x11::X11GlConfigExt;
 use glutin::prelude::*;
-
-use raw_window_handle::{HasRawDisplayHandle, RawWindowHandle};
-
 #[cfg(wgl_backend)]
 use raw_window_handle::HasRawWindowHandle;
-
+use raw_window_handle::{HasRawDisplayHandle, RawWindowHandle};
+pub use window::GlWindow;
 use winit::error::OsError;
 use winit::event_loop::EventLoopWindowTarget;
-use winit::window::{Window, WindowBuilder};
-
 #[cfg(glx_backend)]
 use winit::platform::x11::register_xlib_error_hook;
 #[cfg(x11_platform)]
 use winit::platform::x11::WindowBuilderExtX11;
+use winit::window::{Window, WindowBuilder};
 
 #[cfg(all(not(egl_backend), not(glx_backend), not(wgl_backend), not(cgl_backend)))]
 compile_error!("Please select at least one api backend");
@@ -51,7 +46,7 @@ compile_error!("Please select at least one api backend");
 #[derive(Default, Debug, Clone)]
 pub struct DisplayBuilder {
     preference: ApiPrefence,
-    window_builder: Option<WindowBuilder>,
+    window_builder: Option<WindowBuilder>
 }
 
 impl DisplayBuilder {
@@ -88,13 +83,10 @@ impl DisplayBuilder {
     /// [`Self::with_window_builder`] if modern OpenGL(ES) is desired,
     /// otherwise only builtin functions like `glClear` will be available.
     pub fn build<T, Picker>(
-        mut self,
-        window_target: &EventLoopWindowTarget<T>,
-        template_builder: ConfigTemplateBuilder,
-        config_picker: Picker,
+        mut self, window_target: &EventLoopWindowTarget<T>, template_builder: ConfigTemplateBuilder, config_picker: Picker
     ) -> Result<(Option<Window>, Config), Box<dyn Error>>
     where
-        Picker: FnOnce(Box<dyn Iterator<Item = Config> + '_>) -> Config,
+        Picker: FnOnce(Box<dyn Iterator<Item = Config> + '_>) -> Config
     {
         // XXX with WGL backend window should be created first.
         #[cfg(wgl_backend)]
@@ -139,9 +131,7 @@ impl DisplayBuilder {
 }
 
 fn create_display<T>(
-    window_target: &EventLoopWindowTarget<T>,
-    _api_preference: ApiPrefence,
-    _raw_window_handle: Option<RawWindowHandle>,
+    window_target: &EventLoopWindowTarget<T>, _api_preference: ApiPrefence, _raw_window_handle: Option<RawWindowHandle>
 ) -> Result<Display, Box<dyn Error>> {
     #[cfg(egl_backend)]
     let _preference = DisplayApiPreference::Egl;
@@ -157,18 +147,14 @@ fn create_display<T>(
 
     #[cfg(all(egl_backend, glx_backend))]
     let _preference = match _api_preference {
-        ApiPrefence::PreferEgl => {
-            DisplayApiPreference::EglThenGlx(Box::new(register_xlib_error_hook))
-        },
-        ApiPrefence::FallbackEgl => {
-            DisplayApiPreference::GlxThenEgl(Box::new(register_xlib_error_hook))
-        },
+        ApiPrefence::PreferEgl => DisplayApiPreference::EglThenGlx(Box::new(register_xlib_error_hook)),
+        ApiPrefence::FallbackEgl => DisplayApiPreference::GlxThenEgl(Box::new(register_xlib_error_hook))
     };
 
     #[cfg(all(wgl_backend, egl_backend))]
     let _preference = match _api_preference {
         ApiPrefence::PreferEgl => DisplayApiPreference::EglThenWgl(_raw_window_handle),
-        ApiPrefence::FallbackEgl => DisplayApiPreference::WglThenEgl(_raw_window_handle),
+        ApiPrefence::FallbackEgl => DisplayApiPreference::WglThenEgl(_raw_window_handle)
     };
 
     unsafe { Ok(Display::new(window_target.raw_display_handle(), _preference)?) }
@@ -180,11 +166,7 @@ fn create_display<T>(
 ///
 /// [`Window`]: winit::window::Window
 /// [`Config`]: glutin::config::Config
-pub fn finalize_window<T>(
-    window_target: &EventLoopWindowTarget<T>,
-    mut builder: WindowBuilder,
-    gl_config: &Config,
-) -> Result<Window, OsError> {
+pub fn finalize_window<T>(window_target: &EventLoopWindowTarget<T>, mut builder: WindowBuilder, gl_config: &Config) -> Result<Window, OsError> {
     // Disable transparency if the end config doesn't support it.
     if gl_config.supports_transparency() == Some(false) {
         builder = builder.with_transparent(false);
@@ -215,7 +197,7 @@ pub enum ApiPrefence {
     ///
     /// This behavior is used by default. However consider using
     /// [`Self::PreferEgl`] if you don't care about missing EGL features.
-    FallbackEgl,
+    FallbackEgl
 }
 
 impl Default for ApiPrefence {

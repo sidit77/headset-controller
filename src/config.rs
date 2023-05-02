@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use serde::{Serialize, Deserialize};
+
 use color_eyre::Result;
 use directories_next::BaseDirs;
-use ron::ser::{PrettyConfig, to_string_pretty};
+use ron::ser::{to_string_pretty, PrettyConfig};
+use serde::{Deserialize, Serialize};
 
 #[derive(Default, Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum OsAudio {
@@ -16,7 +17,7 @@ pub enum OsAudio {
     RouteAudio {
         src: String,
         dst: String
-    },
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -27,7 +28,9 @@ pub enum EqualizerConfig {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum CallAction {
-    Nothing, ReduceVolume, Mute
+    Nothing,
+    ReduceVolume,
+    Mute
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,17 +43,15 @@ pub struct Profile {
 }
 
 impl Profile {
-    
     pub(crate) fn new(name: String) -> Self {
         Self {
             name,
             side_tone: 0,
             volume_limiter: true,
             microphone_volume: 0,
-            equalizer: EqualizerConfig::Preset(0),
+            equalizer: EqualizerConfig::Preset(0)
         }
     }
-    
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,7 +62,7 @@ pub struct HeadsetConfig {
     pub auto_enable_bluetooth: bool,
     pub inactive_time: u8,
     pub selected_profile_index: u32,
-    pub profiles: Vec<Profile>,
+    pub profiles: Vec<Profile>
 }
 
 impl Default for HeadsetConfig {
@@ -73,7 +74,7 @@ impl Default for HeadsetConfig {
             auto_enable_bluetooth: false,
             inactive_time: 30,
             selected_profile_index: 0,
-            profiles: vec![Profile::new(String::from("Default"))],
+            profiles: vec![Profile::new(String::from("Default"))]
         }
     }
 }
@@ -81,14 +82,14 @@ impl Default for HeadsetConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     headsets: HashMap<String, HeadsetConfig>,
-    pub auto_apply_changes: bool,
+    pub auto_apply_changes: bool
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             headsets: HashMap::new(),
-            auto_apply_changes: true,
+            auto_apply_changes: true
         }
     }
 }
@@ -104,9 +105,9 @@ impl Config {
         let config: Self = match Self::path().exists() {
             true => {
                 let file = std::fs::read_to_string(Self::path())?;
-                
+
                 ron::from_str(&file)?
-            },
+            }
             false => {
                 let conf = Self::default();
                 conf.save()?;
@@ -123,16 +124,16 @@ impl Config {
 
     pub fn get_headset(&mut self, name: &str) -> &mut HeadsetConfig {
         if !self.headsets.contains_key(name) {
-            self.headsets.insert(String::from(name), HeadsetConfig::default());
+            self.headsets
+                .insert(String::from(name), HeadsetConfig::default());
         }
-        self.headsets.get_mut(name)
+        self.headsets
+            .get_mut(name)
             .expect("Key should always exist")
     }
-
 }
 
 impl HeadsetConfig {
-
     pub fn selected_profile(&mut self) -> &mut Profile {
         if self.profiles.is_empty() {
             tracing::debug!("No profile creating a new one");
@@ -144,5 +145,4 @@ impl HeadsetConfig {
         }
         &mut self.profiles[self.selected_profile_index as usize]
     }
-
 }

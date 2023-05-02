@@ -1,9 +1,11 @@
 use std::time::Duration;
+
 use color_eyre::Result;
 
 #[cfg(target_os = "windows")]
 pub fn notify(msg_title: &str, msg_body: &str, duration: Duration) -> Result<()> {
     use std::thread;
+
     use windows::core::HSTRING;
     use windows::UI::Notifications::{ToastNotification, ToastNotificationManager, ToastTemplateType};
 
@@ -24,7 +26,8 @@ pub fn notify(msg_title: &str, msg_body: &str, duration: Duration) -> Result<()>
     notifier.Show(&toast)?;
     thread::spawn(move || {
         thread::sleep(duration);
-        notifier.Hide(&toast)
+        notifier
+            .Hide(&toast)
             .unwrap_or_else(|err| tracing::warn!("Can not hide notification: {}", err));
     });
     Ok(())

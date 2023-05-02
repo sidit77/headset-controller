@@ -1,5 +1,7 @@
 use std::time::{Duration, Instant};
+
 use fixed_map::{Key, Map};
+
 use crate::util::PeekExt;
 
 #[derive(Debug, Clone, Copy, Key, Eq, PartialEq)]
@@ -32,7 +34,6 @@ impl Action {
 pub struct Debouncer(Map<Action, Instant>);
 
 impl Debouncer {
-
     pub fn new() -> Self {
         Self(Map::new())
     }
@@ -43,17 +44,14 @@ impl Debouncer {
         debug_assert!(old.map_or(true, |old| old <= now));
     }
 
-    pub fn submit_all(&mut self, actions: impl IntoIterator<Item=Action>){
+    pub fn submit_all(&mut self, actions: impl IntoIterator<Item = Action>) {
         for action in actions {
             self.submit(action);
         }
     }
 
     pub fn next_action(&self) -> Option<Instant> {
-        self.0
-            .iter()
-            .map(|(k, v)| *v + k.timeout())
-            .min()
+        self.0.iter().map(|(k, v)| *v + k.timeout()).min()
     }
 
     pub fn force(&mut self, action: Action) {
@@ -62,12 +60,11 @@ impl Debouncer {
         }
     }
 
-    pub fn force_all(&mut self, actions: impl IntoIterator<Item=Action>) {
+    pub fn force_all(&mut self, actions: impl IntoIterator<Item = Action>) {
         for action in actions {
             self.force(action);
         }
     }
-
 }
 
 impl Iterator for Debouncer {
@@ -75,12 +72,14 @@ impl Iterator for Debouncer {
 
     fn next(&mut self) -> Option<Self::Item> {
         let now = Instant::now();
-        let elapsed = self.0
+        let elapsed = self
+            .0
             .iter()
-            .find(|(k, b)| now
-                .checked_duration_since(**b)
-                .map_or(true, |dur| dur >= k.timeout()))
-            .map(|(k,_)| k);
+            .find(|(k, b)| {
+                now.checked_duration_since(**b)
+                    .map_or(true, |dur| dur >= k.timeout())
+            })
+            .map(|(k, _)| k);
         elapsed.peek(|k| self.0.remove(*k))
     }
 }

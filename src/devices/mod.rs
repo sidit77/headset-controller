@@ -2,12 +2,14 @@ mod arctis_nova_7;
 
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
-use color_eyre::{Result};
+
 use color_eyre::eyre::eyre;
+use color_eyre::Result;
 use hidapi::{DeviceInfo, HidApi};
+
 use crate::config::CallAction;
-use crate::util::PeekExt;
 use crate::devices::arctis_nova_7::ArcticsNova7;
+use crate::util::PeekExt;
 
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq)]
 pub enum BatteryLevel {
@@ -22,7 +24,7 @@ impl Display for BatteryLevel {
         match self {
             BatteryLevel::Unknown => write!(f, "Error"),
             BatteryLevel::Charging => write!(f, "Charging"),
-            BatteryLevel::Level(level) => write!(f, "{}%", level),
+            BatteryLevel::Level(level) => write!(f, "{}%", level)
         }
     }
 }
@@ -35,13 +37,9 @@ pub struct ChatMix {
 
 impl Default for ChatMix {
     fn default() -> Self {
-        Self {
-            game: 100,
-            chat: 100,
-        }
+        Self { game: 100, chat: 100 }
     }
 }
-
 
 pub trait SideTone {
     fn levels(&self) -> u8;
@@ -94,7 +92,6 @@ impl Display for Info {
 }
 
 pub trait Device {
-
     fn get_info(&self) -> &Info;
     fn is_connected(&self) -> bool;
     fn poll(&mut self) -> Result<Duration>;
@@ -136,25 +133,33 @@ pub struct DeviceSupport {
     open: fn(device_info: &DeviceInfo, api: &HidApi) -> Result<BoxedDevice>
 }
 
-const SUPPORTED_DEVICES: &[DeviceSupport] = &[
-    ArcticsNova7::SUPPORT
-];
+const SUPPORTED_DEVICES: &[DeviceSupport] = &[ArcticsNova7::SUPPORT];
 
 pub fn find_device() -> Result<Box<dyn Device>> {
     let api = HidApi::new()?;
-    api
-        .device_list()
-        .filter_map(|info|
+    api.device_list()
+        .filter_map(|info| {
             SUPPORTED_DEVICES
                 .iter()
                 .find(|supp| (supp.is_supported)(info))
-                .zip(Some(info)))
-        .inspect(|(_, info) | {
-            tracing::info!("Found {} {}", info.manufacturer_string().unwrap_or(""), info.product_string().unwrap_or(""));
+                .zip(Some(info))
+        })
+        .inspect(|(_, info)| {
+            tracing::info!(
+                "Found {} {}",
+                info.manufacturer_string().unwrap_or(""),
+                info.product_string().unwrap_or("")
+            );
         })
         .collect::<Vec<_>>()
         .first()
-        .peek(|(_, info)| tracing::info!("Selected {} {}", info.manufacturer_string().unwrap_or(""), info.product_string().unwrap_or("")))
-        .map(|(support, info)|(support.open)(info, &api))
+        .peek(|(_, info)| {
+            tracing::info!(
+                "Selected {} {}",
+                info.manufacturer_string().unwrap_or(""),
+                info.product_string().unwrap_or("")
+            )
+        })
+        .map(|(support, info)| (support.open)(info, &api))
         .ok_or_else(|| eyre!("No supported device found!"))?
 }

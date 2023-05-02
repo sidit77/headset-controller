@@ -13,16 +13,14 @@ use std::os::raw::c_void;
 
 #[cfg(feature = "accesskit")]
 pub use accesskit_winit;
-pub use egui;
 #[cfg(feature = "accesskit")]
 use egui::accesskit;
-pub use winit;
+pub use {egui, winit};
 
 pub mod clipboard;
 mod window_settings;
 
 pub use window_settings::WindowSettings;
-
 use winit::event_loop::EventLoopWindowTarget;
 
 pub fn native_pixels_per_point(window: &winit::window::Window) -> f32 {
@@ -48,7 +46,7 @@ pub struct EventResponse {
     pub consumed: bool,
 
     /// Do we need an egui refresh because of this event?
-    pub repaint: bool,
+    pub repaint: bool
 }
 
 // ----------------------------------------------------------------------------
@@ -82,7 +80,7 @@ pub struct State {
     input_method_editor_started: bool,
 
     #[cfg(feature = "accesskit")]
-    accesskit: Option<accesskit_winit::Adapter>,
+    accesskit: Option<accesskit_winit::Adapter>
 }
 
 impl State {
@@ -112,22 +110,16 @@ impl State {
             input_method_editor_started: false,
 
             #[cfg(feature = "accesskit")]
-            accesskit: None,
+            accesskit: None
         }
     }
 
     #[cfg(feature = "accesskit")]
     pub fn init_accesskit<T: From<accesskit_winit::ActionRequestEvent> + Send>(
-        &mut self,
-        window: &winit::window::Window,
-        event_loop_proxy: winit::event_loop::EventLoopProxy<T>,
-        initial_tree_update_factory: impl 'static + FnOnce() -> accesskit::TreeUpdate + Send,
+        &mut self, window: &winit::window::Window, event_loop_proxy: winit::event_loop::EventLoopProxy<T>,
+        initial_tree_update_factory: impl 'static + FnOnce() -> accesskit::TreeUpdate + Send
     ) {
-        self.accesskit = Some(accesskit_winit::Adapter::new(
-            window,
-            initial_tree_update_factory,
-            event_loop_proxy,
-        ));
+        self.accesskit = Some(accesskit_winit::Adapter::new(window, initial_tree_update_factory, event_loop_proxy));
     }
 
     /// Call this once a graphics context has been created to update the maximum texture dimensions
@@ -175,15 +167,11 @@ impl State {
         // This solves an issue where egui window positions would be changed when minimizing on Windows.
         let screen_size_in_pixels = screen_size_in_pixels(window);
         let screen_size_in_points = screen_size_in_pixels / pixels_per_point;
-        self.egui_input.screen_rect =
-            if screen_size_in_points.x > 0.0 && screen_size_in_points.y > 0.0 {
-                Some(egui::Rect::from_min_size(
-                    egui::Pos2::ZERO,
-                    screen_size_in_points,
-                ))
-            } else {
-                None
-            };
+        self.egui_input.screen_rect = if screen_size_in_points.x > 0.0 && screen_size_in_points.y > 0.0 {
+            Some(egui::Rect::from_min_size(egui::Pos2::ZERO, screen_size_in_points))
+        } else {
+            None
+        };
 
         self.egui_input.take()
     }
@@ -191,11 +179,7 @@ impl State {
     /// Call this when there is a new event.
     ///
     /// The result can be found in [`Self::egui_input`] and be extracted with [`Self::take_egui_input`].
-    pub fn on_event(
-        &mut self,
-        egui_ctx: &egui::Context,
-        event: &winit::event::WindowEvent<'_>,
-    ) -> EventResponse {
+    pub fn on_event(&mut self, egui_ctx: &egui::Context, event: &winit::event::WindowEvent<'_>) -> EventResponse {
         use winit::event::WindowEvent;
         match event {
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
@@ -421,11 +405,7 @@ impl State {
             .push(egui::Event::AccessKitActionRequest(request));
     }
 
-    fn on_mouse_button_input(
-        &mut self,
-        state: winit::event::ElementState,
-        button: winit::event::MouseButton,
-    ) {
+    fn on_mouse_button_input(&mut self, state: winit::event::ElementState, button: winit::event::MouseButton) {
         if let Some(pos) = self.pointer_pos_in_points {
             if let Some(button) = translate_mouse_button(button) {
                 let pressed = state == winit::event::ElementState::Pressed;
@@ -434,7 +414,7 @@ impl State {
                     pos,
                     button,
                     pressed,
-                    modifiers: self.egui_input.modifiers,
+                    modifiers: self.egui_input.modifiers
                 });
 
                 if self.simulate_touch_screen {
@@ -446,7 +426,7 @@ impl State {
                             id: egui::TouchId(0),
                             phase: egui::TouchPhase::Start,
                             pos,
-                            force: 0.0,
+                            force: 0.0
                         });
                     } else {
                         self.any_pointer_button_down = false;
@@ -458,7 +438,7 @@ impl State {
                             id: egui::TouchId(0),
                             phase: egui::TouchPhase::End,
                             pos,
-                            force: 0.0,
+                            force: 0.0
                         });
                     };
                 }
@@ -469,7 +449,7 @@ impl State {
     fn on_cursor_moved(&mut self, pos_in_pixels: winit::dpi::PhysicalPosition<f64>) {
         let pos_in_points = egui::pos2(
             pos_in_pixels.x as f32 / self.pixels_per_point(),
-            pos_in_pixels.y as f32 / self.pixels_per_point(),
+            pos_in_pixels.y as f32 / self.pixels_per_point()
         );
         self.pointer_pos_in_points = Some(pos_in_points);
 
@@ -484,7 +464,7 @@ impl State {
                     id: egui::TouchId(0),
                     phase: egui::TouchPhase::Move,
                     pos: pos_in_points,
-                    force: 0.0,
+                    force: 0.0
                 });
             }
         } else {
@@ -508,18 +488,16 @@ impl State {
             },
             pos: egui::pos2(
                 touch.location.x as f32 / self.pixels_per_point(),
-                touch.location.y as f32 / self.pixels_per_point(),
+                touch.location.y as f32 / self.pixels_per_point()
             ),
             force: match touch.force {
                 Some(winit::event::Force::Normalized(force)) => force as f32,
                 Some(winit::event::Force::Calibrated {
-                    force,
-                    max_possible_force,
-                    ..
+                    force, max_possible_force, ..
                 }) => (force / max_possible_force) as f32,
                 Some(_) => unreachable!(),
-                None => 0_f32,
-            },
+                None => 0_f32
+            }
         });
         // If we're not yet tanslating a touch or we're translating this very
         // touch …
@@ -530,20 +508,14 @@ impl State {
                     self.pointer_touch_id = Some(touch.id);
                     // First move the pointer to the right location
                     self.on_cursor_moved(touch.location);
-                    self.on_mouse_button_input(
-                        winit::event::ElementState::Pressed,
-                        winit::event::MouseButton::Left,
-                    );
+                    self.on_mouse_button_input(winit::event::ElementState::Pressed, winit::event::MouseButton::Left);
                 }
                 winit::event::TouchPhase::Moved => {
                     self.on_cursor_moved(touch.location);
                 }
                 winit::event::TouchPhase::Ended => {
                     self.pointer_touch_id = None;
-                    self.on_mouse_button_input(
-                        winit::event::ElementState::Released,
-                        winit::event::MouseButton::Left,
-                    );
+                    self.on_mouse_button_input(winit::event::ElementState::Released, winit::event::MouseButton::Left);
                     // The pointer should vanish completely to not get any
                     // hover effects
                     self.pointer_pos_in_points = None;
@@ -565,9 +537,7 @@ impl State {
                 let points_per_scroll_line = 50.0; // Scroll speed decided by consensus: https://github.com/emilk/egui/issues/461
                 egui::vec2(x, y) * points_per_scroll_line
             }
-            winit::event::MouseScrollDelta::PixelDelta(delta) => {
-                egui::vec2(delta.x as f32, delta.y as f32) / self.pixels_per_point()
-            }
+            winit::event::MouseScrollDelta::PixelDelta(delta) => egui::vec2(delta.x as f32, delta.y as f32) / self.pixels_per_point(),
             _ => unreachable!()
         };
 
@@ -611,7 +581,7 @@ impl State {
                 key,
                 pressed,
                 repeat: false,
-                modifiers: self.egui_input.modifiers,
+                modifiers: self.egui_input.modifiers
             });
         }
         /*
@@ -655,12 +625,7 @@ impl State {
     /// * open any clicked urls
     /// * update the IME
     /// *
-    pub fn handle_platform_output(
-        &mut self,
-        window: &winit::window::Window,
-        egui_ctx: &egui::Context,
-        platform_output: egui::PlatformOutput,
-    ) {
+    pub fn handle_platform_output(&mut self, window: &winit::window::Window, egui_ctx: &egui::Context, platform_output: egui::PlatformOutput) {
         let egui::PlatformOutput {
             cursor_icon,
             open_url,
@@ -669,7 +634,7 @@ impl State {
             mutable_text_under_cursor: _, // only used in eframe web
             text_cursor_pos,
             #[cfg(feature = "accesskit")]
-            accesskit_update,
+            accesskit_update
         } = platform_output;
         self.current_pixels_per_point = egui_ctx.pixels_per_point(); // someone can have changed it to scale the UI
 
@@ -736,32 +701,25 @@ fn open_url_in_browser(_url: &str) {
 /// We also ignore '\r', '\n', '\t'.
 /// Newlines are handled by the `Key::Enter` event.
 fn is_printable_char(chr: char) -> bool {
-    let is_in_private_use_area = '\u{e000}' <= chr && chr <= '\u{f8ff}'
-        || '\u{f0000}' <= chr && chr <= '\u{ffffd}'
-        || '\u{100000}' <= chr && chr <= '\u{10fffd}';
+    let is_in_private_use_area =
+        '\u{e000}' <= chr && chr <= '\u{f8ff}' || '\u{f0000}' <= chr && chr <= '\u{ffffd}' || '\u{100000}' <= chr && chr <= '\u{10fffd}';
 
     !is_in_private_use_area && !chr.is_ascii_control()
 }
 
 fn is_cut_command(modifiers: egui::Modifiers, keycode: winit::keyboard::KeyCode) -> bool {
     (modifiers.command && keycode == winit::keyboard::KeyCode::KeyX)
-        || (cfg!(target_os = "windows")
-            && modifiers.shift
-            && keycode == winit::keyboard::KeyCode::Delete)
+        || (cfg!(target_os = "windows") && modifiers.shift && keycode == winit::keyboard::KeyCode::Delete)
 }
 
 fn is_copy_command(modifiers: egui::Modifiers, keycode: winit::keyboard::KeyCode) -> bool {
     (modifiers.command && keycode == winit::keyboard::KeyCode::KeyC)
-        || (cfg!(target_os = "windows")
-            && modifiers.ctrl
-            && keycode == winit::keyboard::KeyCode::Insert)
+        || (cfg!(target_os = "windows") && modifiers.ctrl && keycode == winit::keyboard::KeyCode::Insert)
 }
 
 fn is_paste_command(modifiers: egui::Modifiers, keycode: winit::keyboard::KeyCode) -> bool {
     (modifiers.command && keycode == winit::keyboard::KeyCode::KeyV)
-        || (cfg!(target_os = "windows")
-            && modifiers.shift
-            && keycode == winit::keyboard::KeyCode::Insert)
+        || (cfg!(target_os = "windows") && modifiers.shift && keycode == winit::keyboard::KeyCode::Insert)
 }
 
 fn translate_mouse_button(button: winit::event::MouseButton) -> Option<egui::PointerButton> {
@@ -910,7 +868,7 @@ fn translate_cursor(cursor_icon: egui::CursorIcon) -> Option<winit::window::Curs
         egui::CursorIcon::VerticalText => Some(winit::window::CursorIcon::VerticalText),
         egui::CursorIcon::Wait => Some(winit::window::CursorIcon::Wait),
         egui::CursorIcon::ZoomIn => Some(winit::window::CursorIcon::ZoomIn),
-        egui::CursorIcon::ZoomOut => Some(winit::window::CursorIcon::ZoomOut),
+        egui::CursorIcon::ZoomOut => Some(winit::window::CursorIcon::ZoomOut)
     }
 }
 

@@ -1,13 +1,18 @@
 use std::time::{Duration, Instant};
-use color_eyre::{Result};
+
 use color_eyre::eyre::ensure;
+use color_eyre::Result;
 use hidapi::{DeviceInfo, HidApi, HidDevice};
+
 use crate::config::CallAction;
-use crate::devices::{BatteryLevel, BluetoothConfig, BoxedDevice, ChatMix, Device, DeviceSupport, Equalizer, InactiveTime, Info, MicrophoneLight, MicrophoneVolume, SideTone, VolumeLimiter};
+use crate::devices::{
+    BatteryLevel, BluetoothConfig, BoxedDevice, ChatMix, Device, DeviceSupport, Equalizer, InactiveTime, Info, MicrophoneLight, MicrophoneVolume,
+    SideTone, VolumeLimiter
+};
 
 const STEELSERIES: u16 = 0x1038;
 
-const ARCTIS_NOVA_7 : u16 = 0x2202;
+const ARCTIS_NOVA_7: u16 = 0x2202;
 const ARCTIS_NOVA_7X: u16 = 0x2206;
 const ARCTIS_NOVA_7P: u16 = 0x220a;
 
@@ -21,8 +26,8 @@ const READ_TIMEOUT: i32 = 500;
 const HEADSET_OFFLINE: u8 = 0x00;
 const HEADSET_CHARGING: u8 = 0x01;
 
-const BATTERY_MAX: u8 =  0x04;
-const BATTERY_MIN: u8 =  0x00;
+const BATTERY_MAX: u8 = 0x04;
+const BATTERY_MIN: u8 = 0x00;
 
 #[derive(Debug)]
 pub struct ArcticsNova7 {
@@ -37,7 +42,7 @@ pub struct ArcticsNova7 {
 impl ArcticsNova7 {
     pub const SUPPORT: DeviceSupport = DeviceSupport {
         is_supported: Self::is_supported,
-        open: Self::open,
+        open: Self::open
     };
     fn is_supported(device_info: &DeviceInfo) -> bool {
         SUPPORTED_VENDORS.contains(&device_info.vendor_id())
@@ -63,19 +68,17 @@ impl ArcticsNova7 {
                 manufacturer,
                 product,
                 name,
-                id,
+                id
             },
             last_chat_mix_adjustment: None,
             connected: false,
             battery: BatteryLevel::Unknown,
-            chat_mix: ChatMix::default(),
+            chat_mix: ChatMix::default()
         }))
     }
-
 }
 
 impl Device for ArcticsNova7 {
-
     fn get_info(&self) -> &Info {
         &self.name
     }
@@ -87,24 +90,27 @@ impl Device for ArcticsNova7 {
     fn poll(&mut self) -> Result<Duration> {
         let mut report = [0u8; STATUS_BUF_SIZE];
         self.device.write(&[0x00, 0xb0])?;
-        ensure!(self.device.read_timeout(&mut report, READ_TIMEOUT)? == STATUS_BUF_SIZE, "Failed to correctly read data");
+        ensure!(
+            self.device.read_timeout(&mut report, READ_TIMEOUT)? == STATUS_BUF_SIZE,
+            "Failed to correctly read data"
+        );
 
         let prev_chat_mix = self.chat_mix;
         self.chat_mix = ChatMix {
             game: report[4],
-            chat: report[5],
+            chat: report[5]
         };
         match report[3] {
             HEADSET_OFFLINE => {
                 self.connected = false;
                 self.battery = BatteryLevel::Unknown;
                 self.chat_mix = ChatMix::default();
-            },
+            }
             HEADSET_CHARGING => {
                 self.connected = true;
                 self.battery = BatteryLevel::Charging;
-            },
-            _ =>  {
+            }
+            _ => {
                 self.connected = true;
                 self.battery = BatteryLevel::Level({
                     let level = report[2].clamp(BATTERY_MIN, BATTERY_MAX);
@@ -118,7 +124,11 @@ impl Device for ArcticsNova7 {
             }
             self.last_chat_mix_adjustment = Some(Instant::now());
         }
-        if self.last_chat_mix_adjustment.map(|i| i.elapsed() > Duration::from_secs(1)).unwrap_or(false) {
+        if self
+            .last_chat_mix_adjustment
+            .map(|i| i.elapsed() > Duration::from_secs(1))
+            .unwrap_or(false)
+        {
             self.last_chat_mix_adjustment = None;
             tracing::trace!("Decrease polling rate");
         }
@@ -127,7 +137,7 @@ impl Device for ArcticsNova7 {
             true => match self.last_chat_mix_adjustment.is_some() {
                 true => Duration::from_millis(250),
                 false => Duration::from_millis(1000)
-            }
+            },
             false => Duration::from_secs(4)
         })
     }
@@ -214,16 +224,20 @@ impl Equalizer for ArcticsNova7 {
 
     fn presets(&self) -> &[(&str, &[u8])] {
         &[
-            ("Flat",   &[0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14]),
-            ("Bass",   &[0x1b, 0x1f, 0x1c, 0x16, 0x11, 0x11, 0x12, 0x12, 0x12, 0x12]),
-            ("Focus",  &[0x0a, 0x0d, 0x12, 0x0d, 0x0f, 0x1c, 0x20, 0x1b, 0x0d, 0x14]),
+            ("Flat", &[0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14]),
+            ("Bass", &[0x1b, 0x1f, 0x1c, 0x16, 0x11, 0x11, 0x12, 0x12, 0x12, 0x12]),
+            ("Focus", &[0x0a, 0x0d, 0x12, 0x0d, 0x0f, 0x1c, 0x20, 0x1b, 0x0d, 0x14]),
             ("Smiley", &[0x1a, 0x1b, 0x17, 0x11, 0x0c, 0x0c, 0x0f, 0x17, 0x1a, 0x1c])
         ]
     }
 
     fn set_levels(&self, levels: &[u8]) -> Result<()> {
         assert_eq!(levels.len(), Equalizer::bands(self) as usize);
-        assert!(levels.iter().all(|i| *i >= self.base_level() - self.variance() && *i <= self.base_level() + self.variance()));
+        assert!(
+            levels
+                .iter()
+                .all(|i| *i >= self.base_level() - self.variance() && *i <= self.base_level() + self.variance())
+        );
         tracing::info!("Setting equalizer to {:?}", levels);
         let mut msg = [0u8; 13];
         msg[1] = 0x33;

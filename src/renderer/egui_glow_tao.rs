@@ -1,8 +1,8 @@
 use egui_glow::ShaderVersion;
+use egui_tao::EventResponse;
 use tao::event::WindowEvent;
 use tao::event_loop::EventLoopWindowTarget;
 use tao::window::Window;
-use egui_tao::EventResponse;
 
 /// Use [`egui`] from a [`glow`] app based on [`winit`].
 pub struct EguiGlow {
@@ -11,16 +11,12 @@ pub struct EguiGlow {
     pub painter: egui_glow::Painter,
 
     shapes: Vec<egui::epaint::ClippedShape>,
-    textures_delta: egui::TexturesDelta,
+    textures_delta: egui::TexturesDelta
 }
 
 impl EguiGlow {
     /// For automatic shader version detection set `shader_version` to `None`.
-    pub fn new<E>(
-        event_loop: &EventLoopWindowTarget<E>,
-        gl: std::sync::Arc<glow::Context>,
-        shader_version: Option<ShaderVersion>,
-    ) -> Self {
+    pub fn new<E>(event_loop: &EventLoopWindowTarget<E>, gl: std::sync::Arc<glow::Context>, shader_version: Option<ShaderVersion>) -> Self {
         let painter = egui_glow::Painter::new(gl, "", shader_version)
             .map_err(|error| {
                 tracing::error!("error occurred in initializing painter:\n{}", error);
@@ -32,7 +28,7 @@ impl EguiGlow {
             egui_winit: egui_tao::State::new(event_loop),
             painter,
             shapes: Default::default(),
-            textures_delta: Default::default(),
+            textures_delta: Default::default()
         }
     }
 
@@ -43,17 +39,13 @@ impl EguiGlow {
     /// Returns the `Duration` of the timeout after which egui should be repainted even if there's no new events.
     ///
     /// Call [`Self::paint`] later to paint.
-    pub fn run(
-        &mut self,
-        window: &Window,
-        run_ui: impl FnMut(&egui::Context),
-    ) -> std::time::Duration {
+    pub fn run(&mut self, window: &Window, run_ui: impl FnMut(&egui::Context)) -> std::time::Duration {
         let raw_input = self.egui_winit.take_egui_input(window);
         let egui::FullOutput {
             platform_output,
             repaint_after,
             textures_delta,
-            shapes,
+            shapes
         } = self.egui_ctx.run(raw_input, run_ui);
 
         self.egui_winit
@@ -75,11 +67,8 @@ impl EguiGlow {
 
         let clipped_primitives = self.egui_ctx.tessellate(shapes);
         let dimensions: [u32; 2] = window.inner_size().into();
-        self.painter.paint_primitives(
-            dimensions,
-            self.egui_ctx.pixels_per_point(),
-            &clipped_primitives,
-        );
+        self.painter
+            .paint_primitives(dimensions, self.egui_ctx.pixels_per_point(), &clipped_primitives);
 
         for id in textures_delta.free.drain(..) {
             self.painter.free_texture(id);

@@ -1,4 +1,3 @@
-
 #[cfg(windows)]
 fn main() {
     let icon_path = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("icon.ico");
@@ -7,7 +6,9 @@ fn main() {
     let file = std::fs::File::open("resources/icon.png").unwrap();
     let image = ico::IconImage::read_png(file).unwrap();
     icon_dir.add_entry(ico::IconDirEntry::encode(&image).unwrap());
-    icon_dir.write(std::fs::File::create(&icon_path).unwrap()).unwrap();
+    icon_dir
+        .write(std::fs::File::create(&icon_path).unwrap())
+        .unwrap();
 
     let mut res = tauri_winres::WindowsResource::new();
     res.set_icon(icon_path.to_str().unwrap());

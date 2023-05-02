@@ -1,11 +1,14 @@
 use egui::*;
+
 use crate::audio::{AudioDevice, AudioSystem};
 use crate::config::{CallAction, HeadsetConfig, OsAudio};
 use crate::debouncer::{Action, Debouncer};
 use crate::devices::Device;
 use crate::ui::ResponseExt;
 
-pub fn headset_section(ui: &mut Ui, debouncer: &mut Debouncer, auto_update: bool, headset: &mut HeadsetConfig, device: &dyn Device, audio_system: &mut AudioSystem) {
+pub fn headset_section(
+    ui: &mut Ui, debouncer: &mut Debouncer, auto_update: bool, headset: &mut HeadsetConfig, device: &dyn Device, audio_system: &mut AudioSystem
+) {
     if device.get_inactive_time().is_some() {
         ui.horizontal(|ui| {
             DragValue::new(&mut headset.inactive_time)
@@ -73,15 +76,19 @@ fn audio_output_switch_selector(ui: &mut Ui, switch: &mut OsAudio, audio_system:
         .show_ui(ui, |ui| {
             let default_device = audio_system
                 .default_device()
-                .or_else(||audio_system
-                    .devices()
-                    .first())
+                .or_else(|| audio_system.devices().first())
                 .map(|d| d.name().to_string())
                 .unwrap_or_else(|| String::from("<None>"));
             let options = [
                 OsAudio::Disabled,
-                OsAudio::ChangeDefault { on_connect: default_device.clone(), on_disconnect: default_device.clone() },
-                OsAudio::RouteAudio { src: default_device.clone(), dst: default_device }
+                OsAudio::ChangeDefault {
+                    on_connect: default_device.clone(),
+                    on_disconnect: default_device.clone()
+                },
+                OsAudio::RouteAudio {
+                    src: default_device.clone(),
+                    dst: default_device
+                }
             ];
             for option in options {
                 let current = std::mem::discriminant(switch) == std::mem::discriminant(&option);
@@ -110,7 +117,7 @@ fn audio_device_selector(ui: &mut Ui, label: &str, selected: &mut String, audio_
     ComboBox::from_label(label)
         .width(300.0)
         .selected_text(selected.as_str())
-        .show_ui(ui, |ui|{
+        .show_ui(ui, |ui| {
             for dev in audio_devices {
                 let current = dev.name() == selected;
                 if ui.selectable_label(current, dev.name()).clicked() && !current {

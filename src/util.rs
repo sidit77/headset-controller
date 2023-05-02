@@ -1,12 +1,10 @@
-
 pub trait CopySlice<T> {
     fn cloned(self) -> Box<[T]>;
 }
 
 impl<T: Clone> CopySlice<T> for &[T] {
     fn cloned(self) -> Box<[T]> {
-        self.to_vec()
-            .into_boxed_slice()
+        self.to_vec().into_boxed_slice()
     }
 }
 

@@ -1,19 +1,19 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod renderer;
-mod devices;
-mod util;
 mod audio;
 mod config;
-mod ui;
-mod notification;
 mod debouncer;
-
+mod devices;
+mod notification;
+mod renderer;
+mod ui;
+mod util;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+
 use color_eyre::Result;
-use egui::{Visuals};
+use egui::Visuals;
 use glow::Context;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget};
@@ -25,20 +25,18 @@ use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::fmt::layer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+
 use crate::audio::AudioSystem;
 use crate::config::{Config, EqualizerConfig, HeadsetConfig};
 use crate::debouncer::{Action, Debouncer};
 use crate::devices::{BatteryLevel, Device};
-use crate::renderer::{create_display, GlutinWindowContext};
 use crate::renderer::egui_glow_tao::EguiGlow;
+use crate::renderer::{create_display, GlutinWindowContext};
 
 fn main() -> Result<()> {
     color_eyre::install()?;
     tracing_subscriber::registry()
-        .with(
-            Targets::new()
-                .with_default(LevelFilter::TRACE)
-        )
+        .with(Targets::new().with_default(LevelFilter::TRACE))
         .with(layer().without_time())
         .with(ErrorLayer::default())
         .init();
@@ -68,9 +66,15 @@ fn main() -> Result<()> {
     let mut debouncer = Debouncer::new();
     debouncer.submit(Action::UpdateSystemAudio);
     event_loop.run_return(move |event, event_loop, control_flow| {
-        if window.as_mut().map(|w| w.handle_events(&event, |egui_ctx| {
-            ui::config_ui(egui_ctx, &mut debouncer, &mut config, device.as_ref(), &mut audio_system);
-        })).unwrap_or(false) {
+        if window
+            .as_mut()
+            .map(|w| {
+                w.handle_events(&event, |egui_ctx| {
+                    ui::config_ui(egui_ctx, &mut debouncer, &mut config, device.as_ref(), &mut audio_system);
+                })
+            })
+            .unwrap_or(false)
+        {
             debouncer.force(Action::SaveConfig);
             window.take();
             if cfg!(debug_assertions) {
@@ -79,7 +83,7 @@ fn main() -> Result<()> {
         }
 
         match event {
-            Event::MenuEvent { menu_id, ..} => {
+            Event::MenuEvent { menu_id, .. } => {
                 if menu_id == open_item.clone().id() {
                     audio_system.refresh_devices();
                     match &mut window {
@@ -92,7 +96,7 @@ fn main() -> Result<()> {
                 if menu_id == quit_item.clone().id() {
                     *control_flow = ControlFlow::Exit;
                 }
-            },
+            }
             Event::NewEvents(_) | Event::LoopDestroyed => {
                 for action in &mut debouncer {
                     tracing::trace!("Activated action: {:?}", action);
@@ -100,17 +104,17 @@ fn main() -> Result<()> {
                         Action::UpdateSystemAudio => {
                             let headset = config.get_headset(&device.get_info().name);
                             audio_system.apply(&headset.os_audio, device.is_connected())
-                        },
+                        }
                         Action::SaveConfig => {
-                            config.save()
+                            config
+                                .save()
                                 .unwrap_or_else(|err| tracing::warn!("Could not save config: {}", err));
-                        },
+                        }
                         action => {
                             let headset = config.get_headset(&device.get_info().name);
                             apply_config_to_device(action, device.as_ref(), headset)
                         }
                     }
-
                 }
 
                 if next_device_poll <= Instant::now() {
@@ -121,7 +125,8 @@ fn main() -> Result<()> {
                         let mut msg = match device.is_connected() {
                             true => "Connected",
                             false => "Disconnected"
-                        }.to_string();
+                        }
+                        .to_string();
                         let battery = [last_battery, device.get_battery_status()]
                             .into_iter()
                             .filter_map(|b| match b {
@@ -146,12 +151,10 @@ fn main() -> Result<()> {
                     }
                 }
             }
-            _ => (),
+            _ => ()
         }
         if !matches!(*control_flow, ControlFlow::ExitWithCode(_)) {
-            let next_window_update = window
-                .as_ref()
-                .and_then(|w|w.next_repaint);
+            let next_window_update = window.as_ref().and_then(|w| w.next_repaint);
             let next_update = [Some(next_device_poll), next_window_update, debouncer.next_action()]
                 .into_iter()
                 .flatten()
@@ -193,44 +196,70 @@ fn submit_full_change(debouncer: &mut Debouncer) {
 fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut HeadsetConfig) {
     if device.is_connected() {
         match action {
-            Action::UpdateSideTone => if let Some(sidetone) = device.get_side_tone() {
-                sidetone.set_level(headset.selected_profile().side_tone)
-                    .unwrap_or_else(|err| tracing::warn!("Can not apply side tone: {}", err));
+            Action::UpdateSideTone => {
+                if let Some(sidetone) = device.get_side_tone() {
+                    sidetone
+                        .set_level(headset.selected_profile().side_tone)
+                        .unwrap_or_else(|err| tracing::warn!("Can not apply side tone: {}", err));
+                }
             }
-            Action::UpdateEqualizer => if let Some(equalizer) = device.get_equalizer() {
-                let levels = match headset.selected_profile().equalizer.clone() {
-                    EqualizerConfig::Preset(i) => equalizer
-                        .presets().get(i as usize)
-                        .expect("Unknown preset").1
-                        .to_vec(),
-                    EqualizerConfig::Custom(levels) => levels,
-                };
-                equalizer.set_levels(&levels)
-                    .unwrap_or_else(|err| tracing::warn!("Could not apply equalizer: {}", err));
+            Action::UpdateEqualizer => {
+                if let Some(equalizer) = device.get_equalizer() {
+                    let levels = match headset.selected_profile().equalizer.clone() {
+                        EqualizerConfig::Preset(i) => equalizer
+                            .presets()
+                            .get(i as usize)
+                            .expect("Unknown preset")
+                            .1
+                            .to_vec(),
+                        EqualizerConfig::Custom(levels) => levels
+                    };
+                    equalizer
+                        .set_levels(&levels)
+                        .unwrap_or_else(|err| tracing::warn!("Could not apply equalizer: {}", err));
+                }
             }
-            Action::UpdateMicrophoneVolume => if let Some(mic_volume) = device.get_mic_volume() {
-                mic_volume.set_level(headset.selected_profile().microphone_volume)
-                    .unwrap_or_else(|err| tracing::warn!("Could not apply microphone volume: {}", err));
+            Action::UpdateMicrophoneVolume => {
+                if let Some(mic_volume) = device.get_mic_volume() {
+                    mic_volume
+                        .set_level(headset.selected_profile().microphone_volume)
+                        .unwrap_or_else(|err| tracing::warn!("Could not apply microphone volume: {}", err));
+                }
             }
-            Action::UpdateVolumeLimit => if let Some(volume_limiter) = device.get_volume_limiter() {
-                volume_limiter.set_enabled(headset.selected_profile().volume_limiter)
-                    .unwrap_or_else(|err| tracing::warn!("Could not apply volume limited: {}", err));
+            Action::UpdateVolumeLimit => {
+                if let Some(volume_limiter) = device.get_volume_limiter() {
+                    volume_limiter
+                        .set_enabled(headset.selected_profile().volume_limiter)
+                        .unwrap_or_else(|err| tracing::warn!("Could not apply volume limited: {}", err));
+                }
             }
-            Action::UpdateInactiveTime => if let Some(inactive_time) = device.get_inactive_time() {
-                inactive_time.set_inactive_time(headset.inactive_time)
-                    .unwrap_or_else(|err| tracing::warn!("Could not apply inactive time: {}", err));
+            Action::UpdateInactiveTime => {
+                if let Some(inactive_time) = device.get_inactive_time() {
+                    inactive_time
+                        .set_inactive_time(headset.inactive_time)
+                        .unwrap_or_else(|err| tracing::warn!("Could not apply inactive time: {}", err));
+                }
             }
-            Action::UpdateMicrophoneLight => if let Some(mic_light) = device.get_mic_light() {
-                mic_light.set_light_strength(headset.mic_light)
-                    .unwrap_or_else(|err| tracing::warn!("Could not apply microphone light: {}", err));
+            Action::UpdateMicrophoneLight => {
+                if let Some(mic_light) = device.get_mic_light() {
+                    mic_light
+                        .set_light_strength(headset.mic_light)
+                        .unwrap_or_else(|err| tracing::warn!("Could not apply microphone light: {}", err));
+                }
             }
-            Action::UpdateBluetoothCall => if let Some(bluetooth_config) = device.get_bluetooth_config() {
-                bluetooth_config.set_auto_enabled(headset.auto_enable_bluetooth)
-                    .unwrap_or_else(|err| tracing::warn!("Could not set bluetooth auto enabled: {}", err));
+            Action::UpdateBluetoothCall => {
+                if let Some(bluetooth_config) = device.get_bluetooth_config() {
+                    bluetooth_config
+                        .set_auto_enabled(headset.auto_enable_bluetooth)
+                        .unwrap_or_else(|err| tracing::warn!("Could not set bluetooth auto enabled: {}", err));
+                }
             }
-            Action::UpdateAutoBluetooth => if let Some(bluetooth_config) = device.get_bluetooth_config() {
-                bluetooth_config.set_call_action(headset.bluetooth_call)
-                    .unwrap_or_else(|err| tracing::warn!("Could not set call action: {}", err));
+            Action::UpdateAutoBluetooth => {
+                if let Some(bluetooth_config) = device.get_bluetooth_config() {
+                    bluetooth_config
+                        .set_call_action(headset.bluetooth_call)
+                        .unwrap_or_else(|err| tracing::warn!("Could not set call action: {}", err));
+                }
             }
             Action::SaveConfig | Action::UpdateSystemAudio => tracing::warn!("{:?} is not related to the device", action)
         }
@@ -262,7 +291,6 @@ fn apply_profile(profile: &Profile, device: &dyn Device) {
 }
 */
 
-
 struct EguiWindow {
     gl_window: GlutinWindowContext,
     gl: Arc<Context>,
@@ -271,7 +299,6 @@ struct EguiWindow {
 }
 
 impl EguiWindow {
-
     fn new(event_loop: &EventLoopWindowTarget<()>) -> Self {
         let (gl_window, gl) = create_display(event_loop);
         let gl = Arc::new(gl);
@@ -283,7 +310,7 @@ impl EguiWindow {
             gl_window,
             gl,
             egui_glow,
-            next_repaint: Some(Instant::now()),
+            next_repaint: Some(Instant::now())
         }
     }
 
@@ -294,7 +321,8 @@ impl EguiWindow {
             let clear_color = [0.1, 0.1, 0.1];
             unsafe {
                 use glow::HasContext as _;
-                self.gl.clear_color(clear_color[0], clear_color[1], clear_color[2], 1.0);
+                self.gl
+                    .clear_color(clear_color[0], clear_color[1], clear_color[2], 1.0);
                 self.gl.clear(glow::COLOR_BUFFER_BIT);
             }
             self.egui_glow.paint(self.gl_window.window());
@@ -302,8 +330,12 @@ impl EguiWindow {
         }
     }
 
-    fn handle_events(&mut self, event: &Event<()>, gui: impl FnMut(&egui::Context)) -> bool{
-        if self.next_repaint.map(|t| Instant::now().checked_duration_since(t)).is_some() {
+    fn handle_events(&mut self, event: &Event<()>, gui: impl FnMut(&egui::Context)) -> bool {
+        if self
+            .next_repaint
+            .map(|t| Instant::now().checked_duration_since(t))
+            .is_some()
+        {
             self.gl_window.window().request_redraw();
         }
         match event {
@@ -313,13 +345,13 @@ impl EguiWindow {
                 match &event {
                     WindowEvent::CloseRequested | WindowEvent::Destroyed => {
                         return true;
-                    },
+                    }
                     WindowEvent::Resized(physical_size) => {
                         self.gl_window.resize(*physical_size);
                     }
                     WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
                         self.gl_window.resize(**new_inner_size);
-                    },
+                    }
                     _ => {}
                 }
 
@@ -328,7 +360,7 @@ impl EguiWindow {
                     self.gl_window.window().request_redraw();
                 }
             }
-            _ => (),
+            _ => ()
         }
         false
     }

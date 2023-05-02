@@ -21,7 +21,7 @@ pub struct Clipboard {
     smithay: Option<smithay_clipboard::Clipboard>,
 
     /// Fallback manual clipboard.
-    clipboard: String,
+    clipboard: String
 }
 
 impl Clipboard {
@@ -43,7 +43,7 @@ impl Clipboard {
             ))]
             smithay: init_smithay_clipboard(wayland_display),
 
-            clipboard: Default::default(),
+            clipboard: Default::default()
         }
     }
 
@@ -132,9 +132,7 @@ fn init_arboard() -> Option<arboard::Clipboard> {
     ),
     feature = "smithay-clipboard"
 ))]
-fn init_smithay_clipboard(
-    wayland_display: Option<*mut c_void>,
-) -> Option<smithay_clipboard::Clipboard> {
+fn init_smithay_clipboard(wayland_display: Option<*mut c_void>) -> Option<smithay_clipboard::Clipboard> {
     if let Some(display) = wayland_display {
         tracing::debug!("Initializing smithay clipboard…");
         #[allow(unsafe_code)]

@@ -1,4 +1,5 @@
 use egui::*;
+
 use crate::config::{EqualizerConfig, Profile};
 use crate::debouncer::{Action, Debouncer};
 use crate::devices::{Device, Equalizer};
@@ -30,28 +31,26 @@ pub fn profile_section(ui: &mut Ui, debouncer: &mut Debouncer, auto_update: bool
             .submit(debouncer, auto_update, Action::UpdateVolumeLimit);
         ui.add_space(10.0);
     }
-
 }
-
-
 
 fn equalizer_ui(ui: &mut Ui, debouncer: &mut Debouncer, auto_update: bool, conf: &mut EqualizerConfig, equalizer: &dyn Equalizer) {
     let range = (equalizer.base_level() - equalizer.variance())..=(equalizer.base_level() + equalizer.variance());
-    let mut presets = equalizer.presets().iter().map(|(s, _)| s.to_string()).collect::<Vec<_>>();
+    let mut presets = equalizer
+        .presets()
+        .iter()
+        .map(|(s, _)| s.to_string())
+        .collect::<Vec<_>>();
     let custom_index = presets.len();
     presets.push("Custom".to_string());
     let (mut current_index, mut levels) = match conf {
         EqualizerConfig::Preset(i) => (*i as usize, equalizer.presets()[*i as usize].1.to_vec()),
         EqualizerConfig::Custom(levels) => (custom_index, levels.clone())
     };
-    let preset = ComboBox::from_label("Equalizer")
-        .show_index(ui, &mut current_index, presets.len(), |i| presets[i].clone());
+    let preset = ComboBox::from_label("Equalizer").show_index(ui, &mut current_index, presets.len(), |i| presets[i].clone());
     let mut dirty = preset.changed();
     ui.horizontal(|ui| {
         for i in levels.iter_mut() {
-            let resp = Slider::new(i, range.clone())
-                .vertical()
-                .ui(ui);
+            let resp = Slider::new(i, range.clone()).vertical().ui(ui);
             if resp.changed() {
                 dirty |= true;
                 current_index = custom_index;

@@ -1,26 +1,27 @@
 use std::iter::FusedIterator;
 use std::marker::PhantomData;
-use std::{ptr, thread};
 use std::ops::Deref;
 use std::thread::JoinHandle;
-use color_eyre::{Result};
+use std::{ptr, thread};
+
 use color_eyre::eyre::ensure;
+use color_eyre::Result;
 use com_policy_config::{IPolicyConfig, PolicyConfigClient};
-use widestring::{U16CString};
-use windows::core::{GUID, HRESULT, implement, Interface, PCWSTR, PWSTR};
+use widestring::U16CString;
+use windows::core::{implement, Interface, GUID, HRESULT, PCWSTR, PWSTR};
 use windows::w;
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Foundation::*;
-use windows::Win32::Media::Audio::*;
 use windows::Win32::Media::Audio::Endpoints::*;
-use windows::Win32::System::Com::*;
+use windows::Win32::Media::Audio::*;
 use windows::Win32::System::Com::StructuredStorage::PropVariantClear;
+use windows::Win32::System::Com::*;
 use windows::Win32::System::Threading::*;
 use windows::Win32::System::WindowsProgramming::INFINITE;
 
 #[derive(Default)]
 struct ComWrapper {
-    _ptr: PhantomData<*mut ()>,
+    _ptr: PhantomData<*mut ()>
 }
 
 thread_local!(static COM_INITIALIZED: ComWrapper = {
@@ -55,7 +56,6 @@ pub struct AudioManager {
 }
 
 impl AudioManager {
-
     pub fn new() -> Result<Self> {
         unsafe {
             com_initialized();
@@ -63,23 +63,21 @@ impl AudioManager {
             let enumerator: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
             let policy_config: IPolicyConfig = CoCreateInstance(&PolicyConfigClient, None, CLSCTX_ALL)?;
 
-            Ok(Self {
-                enumerator,
-                policy_config,
-            })
+            Ok(Self { enumerator, policy_config })
         }
     }
 
-    pub fn devices(&self) -> impl Iterator<Item=AudioDevice> {
+    pub fn devices(&self) -> impl Iterator<Item = AudioDevice> {
         unsafe {
-            let device_collection = self.enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)
+            let device_collection = self
+                .enumerator
+                .EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)
                 .expect("Unexpected error");
-            let count = device_collection.GetCount()
-                .expect("Unexpected error");
+            let count = device_collection.GetCount().expect("Unexpected error");
             AudioDeviceIterator {
                 device_collection,
                 count,
-                index: 0,
+                index: 0
             }
         }
     }
@@ -96,11 +94,11 @@ impl AudioManager {
 
     pub fn set_default_device(&self, device: &AudioDevice) -> Result<()> {
         unsafe {
-            self.policy_config.SetDefaultEndpoint(device.id(), eConsole)?;
+            self.policy_config
+                .SetDefaultEndpoint(device.id(), eConsole)?;
             Ok(())
         }
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -116,7 +114,9 @@ impl Iterator for AudioDeviceIterator {
     fn next(&mut self) -> Option<Self::Item> {
         unsafe {
             if self.index < self.count {
-                let item = self.device_collection.Item(self.index)
+                let item = self
+                    .device_collection
+                    .Item(self.index)
                     .expect("Unexpected error");
                 self.index += 1;
                 Some(AudioDevice::new(item))
@@ -135,7 +135,6 @@ impl Iterator for AudioDeviceIterator {
 impl ExactSizeIterator for AudioDeviceIterator {}
 impl FusedIterator for AudioDeviceIterator {}
 
-
 #[derive(Debug, Clone)]
 pub struct AudioDevice {
     device: IMMDevice,
@@ -144,32 +143,27 @@ pub struct AudioDevice {
 }
 
 impl AudioDevice {
-
     fn new(device: IMMDevice) -> Self {
         unsafe {
             let id = {
-                let ptr = ComPtr(device.GetId()
-                    .expect("Unexpected error").0);
+                let ptr = ComPtr(device.GetId().expect("Unexpected error").0);
                 U16CString::from_ptr_str(ptr.ptr())
             };
             let name = {
-                let property_store = device.OpenPropertyStore(STGM_READ)
+                let property_store = device
+                    .OpenPropertyStore(STGM_READ)
                     .expect("Unexpected error");
-                let mut prop = property_store.GetValue(&PKEY_Device_FriendlyName)
+                let mut prop = property_store
+                    .GetValue(&PKEY_Device_FriendlyName)
                     .expect("Unexpected error");
                 let dynamic_type = &prop.Anonymous.Anonymous;
                 assert_eq!(dynamic_type.vt, VT_LPWSTR);
                 let name: PWSTR = dynamic_type.Anonymous.pwszVal;
                 let result = String::from_utf16_lossy(name.as_wide());
-                PropVariantClear(&mut prop)
-                    .expect("Unexpected error");
+                PropVariantClear(&mut prop).expect("Unexpected error");
                 result
             };
-            Self{
-                device,
-                name,
-                id,
-            }
+            Self { device, name, id }
         }
     }
 
@@ -180,7 +174,6 @@ impl AudioDevice {
     fn id(&self) -> PCWSTR {
         PCWSTR::from_raw(self.id.as_ptr())
     }
-
 }
 
 impl PartialEq for AudioDevice {
@@ -228,7 +221,8 @@ impl IAudioEndpointVolumeCallback_Impl for AudioEndpointVolumeCallback {
     fn OnNotify(&self, pnotify: *mut AUDIO_VOLUME_NOTIFICATION_DATA) -> windows::core::Result<()> {
         unsafe {
             let notify = pnotify.read();
-            self.0.SetMasterVolume(notify.fMasterVolume, &notify.guidEventContext)?;
+            self.0
+                .SetMasterVolume(notify.fMasterVolume, &notify.guidEventContext)?;
             self.0.SetMute(notify.bMuted, &notify.guidEventContext)?;
         }
         Ok(())
@@ -258,7 +252,8 @@ impl VolumeSync {
 impl Drop for VolumeSync {
     fn drop(&mut self) {
         unsafe {
-            self.audio_volume.UnregisterControlChangeNotify(&self.callback)
+            self.audio_volume
+                .UnregisterControlChangeNotify(&self.callback)
                 .unwrap_or_else(|err| tracing::warn!("Failed to unregister volume control handler: {}", err))
         }
     }
@@ -281,13 +276,8 @@ impl Drop for AudioThreadHandle {
 
 fn mark_audio_thread() -> Result<AudioThreadHandle> {
     let mut task_id = 0;
-    let handle = unsafe {
-        AvSetMmThreadCharacteristicsW(w!("Audio"), &mut task_id)?
-    };
-    Ok(AudioThreadHandle {
-        handle,
-        _task_id: task_id,
-    })
+    let handle = unsafe { AvSetMmThreadCharacteristicsW(w!("Audio"), &mut task_id)? };
+    Ok(AudioThreadHandle { handle, _task_id: task_id })
 }
 
 pub struct AudioLoopback {
@@ -297,7 +287,6 @@ pub struct AudioLoopback {
 }
 
 impl AudioLoopback {
-
     pub fn new(src: &AudioDevice, dst: &AudioDevice) -> Result<Self> {
         Ok(unsafe {
             let src_audio_client = ComObj::<IAudioClient>(src.device.Activate(CLSCTX_ALL, None)?);
@@ -308,20 +297,23 @@ impl AudioLoopback {
             let bytes_per_frame = format.ptr().read_unaligned().nBlockAlign as u32;
             let sound_buffer_duration = 10000000;
 
-            src_audio_client.Initialize(AUDCLNT_SHAREMODE_SHARED,
-                                        AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
-                                            AUDCLNT_STREAMFLAGS_NOPERSIST | AUDCLNT_SESSIONFLAGS_DISPLAY_HIDE,
-                                        sound_buffer_duration,
-                                        0,
-                                        format.ptr(),
-                                        None)?;
+            src_audio_client.Initialize(
+                AUDCLNT_SHAREMODE_SHARED,
+                AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_NOPERSIST | AUDCLNT_SESSIONFLAGS_DISPLAY_HIDE,
+                sound_buffer_duration,
+                0,
+                format.ptr(),
+                None
+            )?;
 
-            dst_audio_client.Initialize(AUDCLNT_SHAREMODE_SHARED,
-                                        AUDCLNT_STREAMFLAGS_RATEADJUST | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
-                                        sound_buffer_duration,
-                                        0,
-                                        format.ptr(),
-                                        None)?;
+            dst_audio_client.Initialize(
+                AUDCLNT_SHAREMODE_SHARED,
+                AUDCLNT_STREAMFLAGS_RATEADJUST | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
+                sound_buffer_duration,
+                0,
+                format.ptr(),
+                None
+            )?;
 
             let dst_audio_volume: ISimpleAudioVolume = src_audio_client.GetService()?;
             let src_volume: IAudioEndpointVolume = src.device.Activate(CLSCTX_ALL, None)?;
@@ -330,39 +322,38 @@ impl AudioLoopback {
             let capture_client = ComObj::<IAudioCaptureClient>(src_audio_client.GetService()?);
             let render_client = ComObj::<IAudioRenderClient>(dst_audio_client.GetService()?);
 
-            let stop_event = CreateEventExW(None, None, CREATE_EVENT(0),
-                                              (EVENT_MODIFY_STATE | SYNCHRONIZATION_SYNCHRONIZE).0)?;
-            let buffer_event = CreateEventExW(None, None, CREATE_EVENT(0),
-                                              (EVENT_MODIFY_STATE | SYNCHRONIZATION_SYNCHRONIZE).0)?;
+            let stop_event = CreateEventExW(None, None, CREATE_EVENT(0), (EVENT_MODIFY_STATE | SYNCHRONIZATION_SYNCHRONIZE).0)?;
+            let buffer_event = CreateEventExW(None, None, CREATE_EVENT(0), (EVENT_MODIFY_STATE | SYNCHRONIZATION_SYNCHRONIZE).0)?;
             src_audio_client.SetEventHandle(buffer_event)?;
-            
-            let audio_thread = Some(thread::Builder::new()
-                .name("loopback audio router".to_string())
-                .spawn(move || {
-                    com_initialized();
-                    let _handle = mark_audio_thread()
-                        .map_err(|err| tracing::warn!("Could not mark as audio thread: {}", err));
 
-                    src_audio_client.Start().unwrap();
-                    dst_audio_client.Start().unwrap();
-                    loop {
-                        let wait_result = WaitForMultipleObjects(&[buffer_event, stop_event], false, INFINITE);
-                        match wait_result.0 - WAIT_OBJECT_0.0 {
-                            0 => copy_data(&capture_client, &render_client, bytes_per_frame).unwrap(),
-                            1 => break,
-                            _ => wait_result.ok().unwrap()
+            let audio_thread = Some(
+                thread::Builder::new()
+                    .name("loopback audio router".to_string())
+                    .spawn(move || {
+                        com_initialized();
+                        let _handle = mark_audio_thread().map_err(|err| tracing::warn!("Could not mark as audio thread: {}", err));
+
+                        src_audio_client.Start().unwrap();
+                        dst_audio_client.Start().unwrap();
+                        loop {
+                            let wait_result = WaitForMultipleObjects(&[buffer_event, stop_event], false, INFINITE);
+                            match wait_result.0 - WAIT_OBJECT_0.0 {
+                                0 => copy_data(&capture_client, &render_client, bytes_per_frame).unwrap(),
+                                1 => break,
+                                _ => wait_result.ok().unwrap()
+                            }
                         }
-                    }
-                    CloseHandle(buffer_event)
-                        .ok()
-                        .unwrap_or_else(|err| tracing::warn!("Could not delete buffer event: {}", err));
-                    src_audio_client.Stop().unwrap();
-                    dst_audio_client.Stop().unwrap();
-            })?);
+                        CloseHandle(buffer_event)
+                            .ok()
+                            .unwrap_or_else(|err| tracing::warn!("Could not delete buffer event: {}", err));
+                        src_audio_client.Stop().unwrap();
+                        dst_audio_client.Stop().unwrap();
+                    })?
+            );
             AudioLoopback {
                 stop_event,
                 _volume_sync: volume_sync,
-                audio_thread,
+                audio_thread
             }
         })
     }
@@ -374,7 +365,6 @@ impl AudioLoopback {
                 .unwrap_or_else(|err| tracing::warn!("Could not set stop event: {}", err));
         }
     }
-
 }
 
 impl Drop for AudioLoopback {
@@ -392,16 +382,12 @@ impl Drop for AudioLoopback {
 }
 
 unsafe fn copy_data(src: &IAudioCaptureClient, dst: &IAudioRenderClient, bytes_per_frame: u32) -> Result<()> {
-    let mut packet_length  = src.GetNextPacketSize()?;
+    let mut packet_length = src.GetNextPacketSize()?;
     while packet_length != 0 {
         let mut buffer = ptr::null_mut();
         let mut flags = 0;
         let mut frames_available = 0;
-        src.GetBuffer(&mut buffer,
-                      &mut frames_available,
-                      &mut flags,
-                      None,
-                      None)?;
+        src.GetBuffer(&mut buffer, &mut frames_available, &mut flags, None, None)?;
         let silence = flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 != 0;
         {
             let play_buffer = dst.GetBuffer(frames_available)?;
