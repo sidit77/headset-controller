@@ -17,7 +17,6 @@ use windows::Win32::System::Com::*;
 use windows::Win32::System::Com::StructuredStorage::PropVariantClear;
 use windows::Win32::System::Threading::*;
 use windows::Win32::System::WindowsProgramming::INFINITE;
-use crate::util::LogResultExt;
 
 #[derive(Default)]
 struct ComWrapper {
@@ -260,7 +259,7 @@ impl Drop for VolumeSync {
     fn drop(&mut self) {
         unsafe {
             self.audio_volume.UnregisterControlChangeNotify(&self.callback)
-                .unwrap_or_else(|err| tracing::warn!("Failed to unregister volume control handler"))
+                .unwrap_or_else(|err| tracing::warn!("Failed to unregister volume control handler: {}", err))
         }
     }
 }
@@ -342,7 +341,7 @@ impl AudioLoopback {
                 .spawn(move || {
                     com_initialized();
                     let _handle = mark_audio_thread()
-                        .log_ok("Could not mark as audio thread");
+                        .map_err(|err| tracing::warn!("Could not mark as audio thread: {}", err));
 
                     src_audio_client.Start().unwrap();
                     dst_audio_client.Start().unwrap();
@@ -356,7 +355,7 @@ impl AudioLoopback {
                     }
                     CloseHandle(buffer_event)
                         .ok()
-                        .log_ok("Could not delete buffer event");
+                        .unwrap_or_else(|err| tracing::warn!("Could not delete buffer event: {}", err));
                     src_audio_client.Stop().unwrap();
                     dst_audio_client.Stop().unwrap();
             })?);
@@ -372,7 +371,7 @@ impl AudioLoopback {
         unsafe {
             SetEvent(self.stop_event)
                 .ok()
-                .log_ok("Could not set stop event");
+                .unwrap_or_else(|err| tracing::warn!("Could not set stop event: {}", err));
         }
     }
 
@@ -387,7 +386,7 @@ impl Drop for AudioLoopback {
         unsafe {
             CloseHandle(self.stop_event)
                 .ok()
-                .log_ok("Could not delete stop event");
+                .unwrap_or_else(|err| tracing::warn!("Could not delete stop event: {}", err));
         }
     }
 }

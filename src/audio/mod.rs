@@ -9,7 +9,6 @@ compile_error!("unsupported right now");
 
 pub use platform::{AudioLoopback, AudioDevice, AudioManager};
 use crate::config::OsAudio;
-use crate::util::LogResultExt;
 
 pub struct AudioSystem {
     manager: Result<AudioManager>,
@@ -73,7 +72,7 @@ impl AudioSystem {
                             true => tracing::info!("Device \"{}\" is already active", device.name()),
                             false => {
                                 manager.set_default_device(device)
-                                    .log_ok("Could not change default audio device");
+                                    .unwrap_or_else(|err| tracing::warn!("Could not change default audio device: {}", err));
                                 self.default_device = manager.get_default_device();
                             }
                         }
@@ -92,7 +91,8 @@ impl AudioSystem {
                         match (src, dst) {
                             (Some(src), Some(dst)) => {
                                 self.loopback = AudioLoopback::new(src, dst)
-                                    .log_ok("Could not start audio routing");
+                                    .map_err(|err| tracing::warn!("Could not start audio routing: {}", err))
+                                    .ok();
                             }
                             _ => tracing::warn!("Could not find both audio devices")
                         }

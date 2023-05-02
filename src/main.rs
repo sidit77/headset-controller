@@ -31,7 +31,6 @@ use crate::debouncer::{Action, Debouncer};
 use crate::devices::{BatteryLevel, Device};
 use crate::renderer::{create_display, GlutinWindowContext};
 use crate::renderer::egui_glow_tao::EguiGlow;
-use crate::util::LogResultExt;
 
 fn main() -> Result<()> {
     color_eyre::install()?;
@@ -104,7 +103,7 @@ fn main() -> Result<()> {
                         },
                         Action::SaveConfig => {
                             config.save()
-                                .log_ok("Could not save config");
+                                .unwrap_or_else(|err| tracing::warn!("Could not save config: {}", err));
                         },
                         action => {
                             let headset = config.get_headset(&device.get_info().name);
@@ -134,7 +133,7 @@ fn main() -> Result<()> {
                             msg = format!("{} (Battery: {}%)", msg, level);
                         }
                         notification::notify(&device.get_info().name, &msg, Duration::from_secs(2))
-                            .log_ok("Can not create notification");
+                            .unwrap_or_else(|err| tracing::warn!("Can not create notification: {}", err));
                         debouncer.submit(Action::UpdateSystemAudio);
                         debouncer.force(Action::UpdateSystemAudio);
                     }
@@ -196,7 +195,7 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
         match action {
             Action::UpdateSideTone => if let Some(sidetone) = device.get_side_tone() {
                 sidetone.set_level(headset.selected_profile().side_tone)
-                    .log_ok("Can not apply side tone");
+                    .unwrap_or_else(|err| tracing::warn!("Can not apply side tone: {}", err));
             }
             Action::UpdateEqualizer => if let Some(equalizer) = device.get_equalizer() {
                 let levels = match headset.selected_profile().equalizer.clone() {
@@ -207,31 +206,31 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
                     EqualizerConfig::Custom(levels) => levels,
                 };
                 equalizer.set_levels(&levels)
-                    .log_ok("Could not apply equalizer");
+                    .unwrap_or_else(|err| tracing::warn!("Could not apply equalizer: {}", err));
             }
             Action::UpdateMicrophoneVolume => if let Some(mic_volume) = device.get_mic_volume() {
                 mic_volume.set_level(headset.selected_profile().microphone_volume)
-                    .log_ok("Could not apply microphone volume");
+                    .unwrap_or_else(|err| tracing::warn!("Could not apply microphone volume: {}", err));
             }
             Action::UpdateVolumeLimit => if let Some(volume_limiter) = device.get_volume_limiter() {
                 volume_limiter.set_enabled(headset.selected_profile().volume_limiter)
-                    .log_ok("Could not apply volume limited");
+                    .unwrap_or_else(|err| tracing::warn!("Could not apply volume limited: {}", err));
             }
             Action::UpdateInactiveTime => if let Some(inactive_time) = device.get_inactive_time() {
                 inactive_time.set_inactive_time(headset.inactive_time)
-                    .log_ok("Could not apply inactive time");
+                    .unwrap_or_else(|err| tracing::warn!("Could not apply inactive time: {}", err));
             }
             Action::UpdateMicrophoneLight => if let Some(mic_light) = device.get_mic_light() {
                 mic_light.set_light_strength(headset.mic_light)
-                    .log_ok("Could not apply microphone light");
+                    .unwrap_or_else(|err| tracing::warn!("Could not apply microphone light: {}", err));
             }
             Action::UpdateBluetoothCall => if let Some(bluetooth_config) = device.get_bluetooth_config() {
                 bluetooth_config.set_auto_enabled(headset.auto_enable_bluetooth)
-                    .log_ok("Could not set bluetooth auto enabled");
+                    .unwrap_or_else(|err| tracing::warn!("Could not set bluetooth auto enabled: {}", err));
             }
             Action::UpdateAutoBluetooth => if let Some(bluetooth_config) = device.get_bluetooth_config() {
                 bluetooth_config.set_call_action(headset.bluetooth_call)
-                    .log_ok("Could not set call action");
+                    .unwrap_or_else(|err| tracing::warn!("Could not set call action: {}", err));
             }
             Action::SaveConfig | Action::UpdateSystemAudio => tracing::warn!("{:?} is not related to the device", action)
         }

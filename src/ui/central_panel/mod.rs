@@ -9,7 +9,6 @@ use crate::devices::{Device};
 use crate::{submit_full_change};
 use crate::ui::central_panel::headset::headset_section;
 use crate::ui::central_panel::profile::profile_section;
-use crate::util::LogResultExt;
 
 pub fn central_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config, device: &dyn Device, audio_system: &mut AudioSystem) {
     ui.style_mut().text_styles.get_mut(&TextStyle::Heading).unwrap().size = 25.0;
@@ -46,15 +45,15 @@ pub fn central_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config
             #[cfg(target_os = "windows")]
             {
                 let mut auto_start = autostart::is_enabled()
-                    .log_ok("Can not get autostart status")
+                    .map_err(|err| tracing::warn!("Can not get autostart status: {}", err))
                     .unwrap_or(false);
                 if ui.checkbox(&mut auto_start, "Run On Startup").changed() {
                     if auto_start {
                         autostart::enable()
-                            .log_ok("Can not enable auto start");
+                            .unwrap_or_else(|err| tracing::warn!("Can not enable auto start: {}", err));
                     } else {
                         autostart::disable()
-                            .log_ok("Can not disable auto start");
+                            .unwrap_or_else(|err| tracing::warn!("Can not disable auto start: {}", err));
                     }
                 }
 
@@ -84,7 +83,6 @@ mod autostart {
     use winreg::enums::HKEY_CURRENT_USER;
     use winreg::RegKey;
     use winreg::types::FromRegValue;
-    use crate::util::LogResultExt;
 
     fn directory() -> Result<RegKey> {
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
@@ -108,11 +106,13 @@ mod autostart {
         let cmd = start_cmd()?;
         let result = directory()?
             .enum_values()
-            .filter_map(|r| r.log_ok("Problem enumerating registry key"))
+            .filter_map(|r| r
+                .map_err(|err| tracing::warn!("Problem enumerating registry key: {}", err))
+                .ok())
             .any(|(key, value)|
                 key.eq(reg_key()) &&
                     OsString::from_reg_value(&value)
-                        .log_ok("Can not decode registry value")
+                        .map_err(|err| tracing::warn!("Can not decode registry value: {}", err))
                         .map(|v| v.eq(&cmd))
                         .unwrap_or(false));
         Ok(result)
