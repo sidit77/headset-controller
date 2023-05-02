@@ -20,7 +20,7 @@ impl<T, E: Display> LogResultExt<T> for std::result::Result<T, E> {
         match self {
             Ok(val) => Some(val),
             Err(err) => {
-                log::warn!("{}: {}", msg, err);
+                tracing::warn!("{}: {}", msg, err);
                 None
             }
         }

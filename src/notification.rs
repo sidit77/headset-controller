@@ -1,12 +1,12 @@
 use std::time::Duration;
-use anyhow::Result;
+use color_eyre::Result;
+use crate::util::LogResultExt;
 
 #[cfg(target_os = "windows")]
 pub fn notify(msg_title: &str, msg_body: &str, duration: Duration) -> Result<()> {
     use std::thread;
     use windows::core::HSTRING;
     use windows::UI::Notifications::{ToastNotification, ToastNotificationManager, ToastTemplateType};
-    use crate::util::LogResultExt;
 
     let toast_xml = ToastNotificationManager::GetTemplateContent(ToastTemplateType::ToastText02)?;
     let toast_text_elements = toast_xml.GetElementsByTagName(&HSTRING::from("text"))?;

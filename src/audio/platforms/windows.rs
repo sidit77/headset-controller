@@ -3,18 +3,19 @@ use std::marker::PhantomData;
 use std::{ptr, thread};
 use std::ops::Deref;
 use std::thread::JoinHandle;
-use anyhow::{ensure, Result};
+use color_eyre::{Result};
+use color_eyre::eyre::ensure;
 use com_policy_config::{IPolicyConfig, PolicyConfigClient};
 use widestring::{U16CString};
 use windows::core::{GUID, HRESULT, implement, Interface, PCWSTR, PWSTR};
 use windows::w;
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
-use windows::Win32::Foundation::{CloseHandle, ERROR_NOT_FOUND, HANDLE, WAIT_OBJECT_0};
-use windows::Win32::Media::Audio::{AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SESSIONFLAGS_DISPLAY_HIDE, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM, AUDCLNT_STREAMFLAGS_EVENTCALLBACK, AUDCLNT_STREAMFLAGS_LOOPBACK, AUDCLNT_STREAMFLAGS_NOPERSIST, AUDCLNT_STREAMFLAGS_RATEADJUST, AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY, AUDIO_VOLUME_NOTIFICATION_DATA, DEVICE_STATE_ACTIVE, eConsole, eRender, IAudioCaptureClient, IAudioClient, IAudioRenderClient, IMMDevice, IMMDeviceCollection, IMMDeviceEnumerator, ISimpleAudioVolume, MMDeviceEnumerator};
-use windows::Win32::Media::Audio::Endpoints::{IAudioEndpointVolume, IAudioEndpointVolumeCallback, IAudioEndpointVolumeCallback_Impl};
-use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, COINIT_MULTITHREADED, CoInitializeEx, CoTaskMemFree, CoUninitialize, STGM_READ, VT_LPWSTR};
+use windows::Win32::Foundation::*;
+use windows::Win32::Media::Audio::*;
+use windows::Win32::Media::Audio::Endpoints::*;
+use windows::Win32::System::Com::*;
 use windows::Win32::System::Com::StructuredStorage::PropVariantClear;
-use windows::Win32::System::Threading::{AvRevertMmThreadCharacteristics, AvSetMmThreadCharacteristicsW, CREATE_EVENT, CreateEventExW, EVENT_MODIFY_STATE, SetEvent, SYNCHRONIZATION_SYNCHRONIZE, WaitForMultipleObjects};
+use windows::Win32::System::Threading::*;
 use windows::Win32::System::WindowsProgramming::INFINITE;
 use crate::util::LogResultExt;
 
@@ -28,7 +29,7 @@ thread_local!(static COM_INITIALIZED: ComWrapper = {
         CoInitializeEx(None, COINIT_MULTITHREADED)
             .expect("Could not initialize COM");
         let thread = std::thread::current();
-        log::trace!("Initialized COM on thread \"{}\"", thread.name().unwrap_or(""));
+        tracing::trace!("Initialized COM on thread \"{}\"", thread.name().unwrap_or(""));
         ComWrapper::default()
     }
 });
@@ -38,7 +39,7 @@ impl Drop for ComWrapper {
         unsafe {
             CoUninitialize();
             let thread = std::thread::current();
-            log::trace!("Uninitialized COM on thread \"{}\"", thread.name().unwrap_or(""));
+            tracing::trace!("Uninitialized COM on thread \"{}\"", thread.name().unwrap_or(""));
         }
     }
 }
@@ -259,7 +260,7 @@ impl Drop for VolumeSync {
     fn drop(&mut self) {
         unsafe {
             self.audio_volume.UnregisterControlChangeNotify(&self.callback)
-                .log_ok("Error removing volume control handler");
+                .unwrap_or_else(|err| tracing::warn!("Failed to unregister volume control handler"))
         }
     }
 }
@@ -274,7 +275,7 @@ impl Drop for AudioThreadHandle {
         unsafe {
             AvRevertMmThreadCharacteristics(self.handle)
                 .ok()
-                .log_ok("Could not revert to normal thread");
+                .unwrap_or_else(|err| tracing::warn!("Could not revert to normal thread: {}", err))
         }
     }
 }
@@ -304,7 +305,7 @@ impl AudioLoopback {
             let dst_audio_client = ComObj::<IAudioClient>(dst.device.Activate(CLSCTX_ALL, None)?);
 
             let format = ComPtr(src_audio_client.GetMixFormat()?);
-            ensure!(!format.ptr().is_null());
+            ensure!(!format.ptr().is_null(), "Could not retrieve current format");
             let bytes_per_frame = format.ptr().read_unaligned().nBlockAlign as u32;
             let sound_buffer_duration = 10000000;
 

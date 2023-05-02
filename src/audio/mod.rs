@@ -1,4 +1,4 @@
-use anyhow::Result;
+use color_eyre::Result;
 
 #[cfg(target_os = "windows")]
 #[path = "platforms/windows.rs"]
@@ -70,7 +70,7 @@ impl AudioSystem {
                         match self
                             .default_device()
                             .map_or(false, |dev|dev == device) {
-                            true => log::info!("Device \"{}\" is already active", device.name()),
+                            true => tracing::info!("Device \"{}\" is already active", device.name()),
                             false => {
                                 manager.set_default_device(device)
                                     .log_ok("Could not change default audio device");
@@ -94,7 +94,7 @@ impl AudioSystem {
                                 self.loopback = AudioLoopback::new(src, dst)
                                     .log_ok("Could not start audio routing");
                             }
-                            _ => log::warn!("Could not find both audio devices")
+                            _ => tracing::warn!("Could not find both audio devices")
                         }
                     }
                 }

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use serde::{Serialize, Deserialize};
-use anyhow::Result;
+use color_eyre::Result;
 use directories_next::BaseDirs;
 use ron::ser::{PrettyConfig, to_string_pretty};
 
@@ -135,11 +135,11 @@ impl HeadsetConfig {
 
     pub fn selected_profile(&mut self) -> &mut Profile {
         if self.profiles.is_empty() {
-            log::debug!("No profile creating a new one");
+            tracing::debug!("No profile creating a new one");
             self.profiles.push(Profile::new(String::from("Default")));
         }
         if self.selected_profile_index >= self.profiles.len() as u32 {
-            log::debug!("profile index out of bounds");
+            tracing::debug!("profile index out of bounds");
             self.selected_profile_index = self.profiles.len() as u32 - 1;
         }
         &mut self.profiles[self.selected_profile_index as usize]

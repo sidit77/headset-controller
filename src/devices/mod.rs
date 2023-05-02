@@ -2,7 +2,8 @@ mod arctis_nova_7;
 
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
-use anyhow::{anyhow, Result};
+use color_eyre::{Result};
+use color_eyre::eyre::eyre;
 use hidapi::{DeviceInfo, HidApi};
 use crate::config::CallAction;
 use crate::util::PeekExt;
@@ -149,11 +150,11 @@ pub fn find_device() -> Result<Box<dyn Device>> {
                 .find(|supp| (supp.is_supported)(info))
                 .zip(Some(info)))
         .inspect(|(_, info) | {
-            log::info!("Found {} {}", info.manufacturer_string().unwrap_or(""), info.product_string().unwrap_or(""));
+            tracing::info!("Found {} {}", info.manufacturer_string().unwrap_or(""), info.product_string().unwrap_or(""));
         })
         .collect::<Vec<_>>()
         .first()
-        .peek(|(_, info)| log::info!("Selected {} {}", info.manufacturer_string().unwrap_or(""), info.product_string().unwrap_or("")))
+        .peek(|(_, info)| tracing::info!("Selected {} {}", info.manufacturer_string().unwrap_or(""), info.product_string().unwrap_or("")))
         .map(|(support, info)|(support.open)(info, &api))
-        .ok_or_else(|| anyhow!("No supported device found!"))?
+        .ok_or_else(|| eyre!("No supported device found!"))?
 }

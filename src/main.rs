@@ -12,15 +12,19 @@ mod debouncer;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use anyhow::Result;
+use color_eyre::Result;
 use egui::{Visuals};
 use glow::Context;
-use log::LevelFilter;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget};
 use tao::menu::{ContextMenu, MenuItemAttributes};
 use tao::platform::run_return::EventLoopExtRunReturn;
 use tao::system_tray::SystemTrayBuilder;
+use tracing_error::ErrorLayer;
+use tracing_subscriber::filter::{LevelFilter, Targets};
+use tracing_subscriber::fmt::layer;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 use crate::audio::AudioSystem;
 use crate::config::{Config, EqualizerConfig, HeadsetConfig};
 use crate::debouncer::{Action, Debouncer};
@@ -30,10 +34,14 @@ use crate::renderer::egui_glow_tao::EguiGlow;
 use crate::util::LogResultExt;
 
 fn main() -> Result<()> {
-    env_logger::builder()
-        .filter_level(LevelFilter::Trace)
-        .format_timestamp(None)
-        .parse_default_env()
+    color_eyre::install()?;
+    tracing_subscriber::registry()
+        .with(
+            Targets::new()
+                .with_default(LevelFilter::TRACE)
+        )
+        .with(layer().without_time())
+        .with(ErrorLayer::default())
         .init();
 
     let mut config = Config::load()?;
@@ -88,7 +96,7 @@ fn main() -> Result<()> {
             },
             Event::NewEvents(_) | Event::LoopDestroyed => {
                 for action in &mut debouncer {
-                    log::trace!("Activated action: {:?}", action);
+                    tracing::trace!("Activated action: {:?}", action);
                     match action {
                         Action::UpdateSystemAudio => {
                             let headset = config.get_headset(&device.get_info().name);
@@ -111,10 +119,21 @@ fn main() -> Result<()> {
                     next_device_poll = Instant::now() + device.poll().unwrap();
 
                     if last_connected != device.is_connected() {
-                        notification::notify(&device.get_info().name, match device.is_connected() {
+                        let mut msg = match device.is_connected() {
                             true => "Connected",
                             false => "Disconnected"
-                        }, Duration::from_secs(2))
+                        }.to_string();
+                        let battery = [last_battery, device.get_battery_status()]
+                            .into_iter()
+                            .filter_map(|b| match b {
+                                Some(BatteryLevel::Level(l)) => Some(l),
+                                _ => None
+                            })
+                            .min();
+                        if let Some(level) = battery {
+                            msg = format!("{} (Battery: {}%)", msg, level);
+                        }
+                        notification::notify(&device.get_info().name, &msg, Duration::from_secs(2))
                             .log_ok("Can not create notification");
                         debouncer.submit(Action::UpdateSystemAudio);
                         debouncer.force(Action::UpdateSystemAudio);
@@ -214,7 +233,7 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
                 bluetooth_config.set_call_action(headset.bluetooth_call)
                     .log_ok("Could not set call action");
             }
-            Action::SaveConfig | Action::UpdateSystemAudio => log::warn!("{:?} is not related to the device", action)
+            Action::SaveConfig | Action::UpdateSystemAudio => tracing::warn!("{:?} is not related to the device", action)
         }
     }
 }

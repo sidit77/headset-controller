@@ -23,7 +23,7 @@ impl EguiGlow {
     ) -> Self {
         let painter = egui_glow::Painter::new(gl, "", shader_version)
             .map_err(|error| {
-                log::error!("error occurred in initializing painter:\n{}", error);
+                tracing::error!("error occurred in initializing painter:\n{}", error);
             })
             .unwrap();
 

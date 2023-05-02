@@ -80,7 +80,7 @@ pub fn central_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config
 #[cfg(target_os = "windows")]
 mod autostart {
     use std::ffi::OsString;
-    use anyhow::Result;
+    use color_eyre::Result;
     use winreg::enums::HKEY_CURRENT_USER;
     use winreg::RegKey;
     use winreg::types::FromRegValue;
