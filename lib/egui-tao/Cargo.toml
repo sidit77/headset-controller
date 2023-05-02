@@ -48,7 +48,7 @@ instant = { version = "0.1", features = [
   "wasm-bindgen",
 ] } # We use instant so we can (maybe) compile for web
 tracing = { version = "0.1", default-features = false, features = ["std"] }
-winit = { package="tao", version = "0.18", default-features = false }
+winit = { package="tao", version = "0.19", default-features = false }
 
 #! ### Optional dependencies
 

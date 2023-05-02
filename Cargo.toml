@@ -26,14 +26,14 @@ directories-next = "2.0"
 serde = { version = "1.0", features = ["derive"] }
 ron = "0.8"
 once_cell = "1.17"
-fixed-map = "0.8"
+fixed-map = "0.9"
 
 egui = "0.21"
 glutin = "0.30"
 glow = "0.12"
 egui_glow = { version = "0.21" }
 raw-window-handle = "0.5"
-tao = { version = "0.18.0", features = ["tray"] }
+tao = { version = "0.19", features = ["tray"] }
 glutin-tao = {path = "./lib/glutin-tao"}
 egui-tao = {path = "./lib/egui-tao"}
 
@@ -42,13 +42,13 @@ notify-rust = "4.7"
 png = "0.17"
 
 [target."cfg(target_os = \"windows\")".dependencies]
-com-policy-config = "0.2"
+com-policy-config = "0.3"
 widestring = "1.0"
-winreg = "0.11"
+winreg = "0.50"
 dunce = "1.0"
 
 [target."cfg(target_os = \"windows\")".dependencies.windows]
-version = "0.44.0"
+version = "0.48"
 features = [
     "Win32_Foundation",
     "Win32_Media_Audio",
@@ -62,7 +62,8 @@ features = [
     "Win32_System_Threading",
     "Foundation_Collections",
     "Data_Xml_Dom",
-    "UI_Notifications"
+    "UI_Notifications",
+    "implement"
 ]
 
 [target."cfg(target_os = \"windows\")".build-dependencies]

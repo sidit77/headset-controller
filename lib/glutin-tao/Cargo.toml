@@ -16,7 +16,7 @@ glx = ["glutin/glx"]
 wgl = ["glutin/wgl"]
 
 [dependencies]
-winit = { package="tao", version = "0.18", default-features = false }
+winit = { package="tao", version = "0.19", default-features = false }
 glutin = { version = "0.30", default-features = false }
 raw-window-handle = "0.5"
 

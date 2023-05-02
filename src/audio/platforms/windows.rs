@@ -17,7 +17,6 @@ use windows::Win32::Media::Audio::*;
 use windows::Win32::System::Com::StructuredStorage::PropVariantClear;
 use windows::Win32::System::Com::*;
 use windows::Win32::System::Threading::*;
-use windows::Win32::System::WindowsProgramming::INFINITE;
 
 #[derive(Default)]
 struct ComWrapper {
@@ -59,7 +58,6 @@ impl AudioManager {
     pub fn new() -> Result<Self> {
         unsafe {
             com_initialized();
-
             let enumerator: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
             let policy_config: IPolicyConfig = CoCreateInstance(&PolicyConfigClient, None, CLSCTX_ALL)?;
 
