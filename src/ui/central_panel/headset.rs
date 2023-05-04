@@ -17,17 +17,17 @@ pub fn headset_section(
                 .submit(debouncer, auto_update, Action::UpdateInactiveTime);
             ui.label("Inactive Time");
         });
+        ui.add_space(10.0);
     }
 
-    ui.add_space(10.0);
     if let Some(mic_light) = device.get_mic_light() {
         Slider::new(&mut headset.mic_light, 0..=(mic_light.levels() - 1))
             .text("Microphone Light")
             .ui(ui)
             .submit(debouncer, auto_update, Action::UpdateMicrophoneLight);
+        ui.add_space(10.0);
     }
 
-    ui.add_space(10.0);
     if device.get_bluetooth_config().is_some() {
         Checkbox::new(&mut headset.auto_enable_bluetooth, "Auto Enable Bluetooth")
             .ui(ui)
@@ -46,9 +46,9 @@ pub fn headset_section(
             .show_index(ui, &mut current_index, actions.len(), |i| actions[i].1.to_string())
             .submit(debouncer, auto_update, Action::UpdateBluetoothCall);
         headset.bluetooth_call = actions[current_index].0;
+        ui.add_space(10.0);
     }
 
-    ui.add_space(10.0);
     let switch = &mut headset.os_audio;
     if audio_output_switch_selector(ui, switch, audio_system) {
         debouncer.submit(Action::SaveConfig);

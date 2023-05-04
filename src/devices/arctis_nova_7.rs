@@ -52,7 +52,6 @@ impl ArcticsNova7 {
     fn open(device_info: &DeviceInfo, api: &HidApi) -> Result<BoxedDevice> {
         ensure!(Self::is_supported(device_info), "Device not supported");
         let device = device_info.open_device(api)?;
-        let id = ((device_info.vendor_id() as u32) << 16) | (device_info.product_id() as u32);
         let manufacturer = device_info
             .manufacturer_string()
             .unwrap_or("SteelSeries")
@@ -67,8 +66,7 @@ impl ArcticsNova7 {
             name: Info {
                 manufacturer,
                 product,
-                name,
-                id
+                name
             },
             last_chat_mix_adjustment: None,
             connected: false,

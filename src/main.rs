@@ -20,6 +20,7 @@ use tao::event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget};
 use tao::menu::{ContextMenu, MenuItemAttributes};
 use tao::platform::run_return::EventLoopExtRunReturn;
 use tao::system_tray::SystemTrayBuilder;
+use tracing::instrument;
 use tracing_error::ErrorLayer;
 use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::fmt::layer;
@@ -45,7 +46,7 @@ fn main() -> Result<()> {
 
     let mut audio_system = AudioSystem::new();
 
-    let mut device = devices::find_device().unwrap();
+    let mut device = devices::dummy();//devices::find_device().unwrap();
 
     let mut event_loop = EventLoop::new();
 
@@ -193,11 +194,13 @@ fn submit_full_change(debouncer: &mut Debouncer) {
     debouncer.force_all(actions);
 }
 
+#[instrument(skip_all, fields(name = %device.get_info().name))]
 fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut HeadsetConfig) {
     if device.is_connected() {
         match action {
             Action::UpdateSideTone => {
                 if let Some(sidetone) = device.get_side_tone() {
+                    let _span = tracing::trace_span!("sidetone").entered();
                     sidetone
                         .set_level(headset.selected_profile().side_tone)
                         .unwrap_or_else(|err| tracing::warn!("Can not apply side tone: {}", err));
@@ -205,6 +208,7 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
             }
             Action::UpdateEqualizer => {
                 if let Some(equalizer) = device.get_equalizer() {
+                    let _span = tracing::trace_span!("equalizer").entered();
                     let levels = match headset.selected_profile().equalizer.clone() {
                         EqualizerConfig::Preset(i) => equalizer
                             .presets()
@@ -221,6 +225,7 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
             }
             Action::UpdateMicrophoneVolume => {
                 if let Some(mic_volume) = device.get_mic_volume() {
+                    let _span = tracing::trace_span!("mic_volume").entered();
                     mic_volume
                         .set_level(headset.selected_profile().microphone_volume)
                         .unwrap_or_else(|err| tracing::warn!("Could not apply microphone volume: {}", err));
@@ -228,6 +233,7 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
             }
             Action::UpdateVolumeLimit => {
                 if let Some(volume_limiter) = device.get_volume_limiter() {
+                    let _span = tracing::trace_span!("volume_limiter").entered();
                     volume_limiter
                         .set_enabled(headset.selected_profile().volume_limiter)
                         .unwrap_or_else(|err| tracing::warn!("Could not apply volume limited: {}", err));
@@ -235,6 +241,7 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
             }
             Action::UpdateInactiveTime => {
                 if let Some(inactive_time) = device.get_inactive_time() {
+                    let _span = tracing::trace_span!("inactive time").entered();
                     inactive_time
                         .set_inactive_time(headset.inactive_time)
                         .unwrap_or_else(|err| tracing::warn!("Could not apply inactive time: {}", err));
@@ -242,6 +249,7 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
             }
             Action::UpdateMicrophoneLight => {
                 if let Some(mic_light) = device.get_mic_light() {
+                    let _span = tracing::trace_span!("mic_light").entered();
                     mic_light
                         .set_light_strength(headset.mic_light)
                         .unwrap_or_else(|err| tracing::warn!("Could not apply microphone light: {}", err));
@@ -249,6 +257,7 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
             }
             Action::UpdateBluetoothCall => {
                 if let Some(bluetooth_config) = device.get_bluetooth_config() {
+                    let _span = tracing::trace_span!("bluetooth").entered();
                     bluetooth_config
                         .set_auto_enabled(headset.auto_enable_bluetooth)
                         .unwrap_or_else(|err| tracing::warn!("Could not set bluetooth auto enabled: {}", err));
@@ -256,6 +265,7 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
             }
             Action::UpdateAutoBluetooth => {
                 if let Some(bluetooth_config) = device.get_bluetooth_config() {
+                    let _span = tracing::trace_span!("bluetooth").entered();
                     bluetooth_config
                         .set_call_action(headset.bluetooth_call)
                         .unwrap_or_else(|err| tracing::warn!("Could not set call action: {}", err));

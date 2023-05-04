@@ -1,4 +1,5 @@
 mod arctis_nova_7;
+mod dummy;
 
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
@@ -9,6 +10,7 @@ use hidapi::{DeviceInfo, HidApi};
 
 use crate::config::CallAction;
 use crate::devices::arctis_nova_7::ArcticsNova7;
+use crate::devices::dummy::DummyDevice;
 use crate::util::PeekExt;
 
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq)]
@@ -81,8 +83,7 @@ pub trait InactiveTime {
 pub struct Info {
     pub manufacturer: String,
     pub product: String,
-    pub name: String,
-    pub id: u32
+    pub name: String
 }
 
 impl Display for Info {
@@ -134,6 +135,10 @@ pub struct DeviceSupport {
 }
 
 const SUPPORTED_DEVICES: &[DeviceSupport] = &[ArcticsNova7::SUPPORT];
+
+pub fn dummy() -> Box<dyn Device> {
+    Box::new(DummyDevice)
+}
 
 pub fn find_device() -> Result<Box<dyn Device>> {
     let api = HidApi::new()?;
