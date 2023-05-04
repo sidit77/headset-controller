@@ -1,17 +1,17 @@
 mod arctis_nova_7;
 mod dummy;
 
-use std::fmt::{Display, Formatter};
+use std::error::Error;
+use std::fmt::{Debug, Display, Formatter};
+use std::marker::PhantomData;
 use std::time::Duration;
 
-use color_eyre::eyre::eyre;
-use color_eyre::Result;
-use hidapi::{DeviceInfo, HidApi};
+use color_eyre::eyre::Error as EyreError;
+use hidapi::{DeviceInfo, HidApi, HidDevice, HidError};
 
 use crate::config::CallAction;
 use crate::devices::arctis_nova_7::ArcticsNova7;
 use crate::devices::dummy::DummyDevice;
-use crate::util::PeekExt;
 
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq)]
 pub enum BatteryLevel {
@@ -45,16 +45,16 @@ impl Default for ChatMix {
 
 pub trait SideTone {
     fn levels(&self) -> u8;
-    fn set_level(&self, level: u8) -> Result<()>;
+    fn set_level(&self, level: u8) -> DeviceResult<()>;
 }
 
 pub trait VolumeLimiter {
-    fn set_enabled(&self, enabled: bool) -> Result<()>;
+    fn set_enabled(&self, enabled: bool) -> DeviceResult<()>;
 }
 
 pub trait MicrophoneVolume {
     fn levels(&self) -> u8;
-    fn set_level(&self, level: u8) -> Result<()>;
+    fn set_level(&self, level: u8) -> DeviceResult<()>;
 }
 
 pub trait Equalizer {
@@ -62,21 +62,21 @@ pub trait Equalizer {
     fn base_level(&self) -> u8;
     fn variance(&self) -> u8;
     fn presets(&self) -> &[(&str, &[u8])];
-    fn set_levels(&self, levels: &[u8]) -> Result<()>;
+    fn set_levels(&self, levels: &[u8]) -> DeviceResult<()>;
 }
 
 pub trait BluetoothConfig {
-    fn set_call_action(&self, action: CallAction) -> Result<()>;
-    fn set_auto_enabled(&self, enabled: bool) -> Result<()>;
+    fn set_call_action(&self, action: CallAction) -> DeviceResult<()>;
+    fn set_auto_enabled(&self, enabled: bool) -> DeviceResult<()>;
 }
 
 pub trait MicrophoneLight {
     fn levels(&self) -> u8;
-    fn set_light_strength(&self, level: u8) -> Result<()>;
+    fn set_light_strength(&self, level: u8) -> DeviceResult<()>;
 }
 
 pub trait InactiveTime {
-    fn set_inactive_time(&self, minutes: u8) -> Result<()>;
+    fn set_inactive_time(&self, minutes: u8) -> DeviceResult<()>;
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -92,10 +92,11 @@ impl Display for Info {
     }
 }
 
-pub trait Device {
+pub trait Device{
+
     fn get_info(&self) -> &Info;
     fn is_connected(&self) -> bool;
-    fn poll(&mut self) -> Result<Duration>;
+    fn poll(&mut self) -> DeviceResult<Duration>;
 
     fn get_battery_status(&self) -> Option<BatteryLevel> {
         None
@@ -128,43 +129,115 @@ pub trait Device {
 
 pub type BoxedDevice = Box<dyn Device>;
 
-#[derive(Copy, Clone)]
-pub struct DeviceSupport {
-    is_supported: fn(device_info: &DeviceInfo) -> bool,
-    open: fn(device_info: &DeviceInfo, api: &HidApi) -> Result<BoxedDevice>
+pub trait SupportedDevice {
+    fn get_info(&self) -> &Info;
+    fn open(&self, api: &HidApi) -> DeviceResult<BoxedDevice>;
 }
 
-const SUPPORTED_DEVICES: &[DeviceSupport] = &[ArcticsNova7::SUPPORT];
+pub type CheckSupport = fn(info: &DeviceInfo) -> Option<Box<dyn SupportedDevice>>;
 
-pub fn dummy() -> Box<dyn Device> {
-    Box::new(DummyDevice)
+#[derive(Debug, Clone)]
+pub struct GenericHidDevice<T> {
+    device_info: DeviceInfo,
+    info: Info,
+    _marker: PhantomData<T>
 }
 
-pub fn find_device() -> Result<Box<dyn Device>> {
-    let api = HidApi::new()?;
-    api.device_list()
-        .filter_map(|info| {
-            SUPPORTED_DEVICES
+impl<T> GenericHidDevice<T> {
+
+    pub fn new(info: &DeviceInfo, fallback_manufacturer: &str, fallback_product: &str) -> Self {
+        let manufacturer = info
+            .manufacturer_string()
+            .unwrap_or(fallback_manufacturer)
+            .to_string();
+        let product = info
+            .product_string()
+            .unwrap_or(fallback_product)
+            .to_string();
+        let name = format!("{} {}", manufacturer, product);
+        Self {
+            device_info: info.clone(),
+            info: Info {
+                manufacturer,
+                product,
+                name,
+            },
+            _marker: Default::default(),
+        }
+    }
+
+}
+
+impl<T: From<(HidDevice, Info)> + Device + 'static> SupportedDevice for GenericHidDevice<T> {
+    fn get_info(&self) -> &Info {
+        &self.info
+    }
+
+    fn open(&self, api: &HidApi) -> DeviceResult<BoxedDevice> {
+        let device = self.device_info.open_device(api)?;
+        Ok(Box::new(T::from((device, self.info.clone()))))
+    }
+}
+
+const SUPPORTED_DEVICES: &[CheckSupport] = &[ArcticsNova7::SUPPORT];
+
+pub struct DeviceManager(HidApi);
+
+impl DeviceManager {
+
+    pub fn new() -> DeviceResult<Self> {
+        Ok(Self(HidApi::new()?))
+    }
+
+    pub fn supported_devices(&self) -> Vec<Box<dyn SupportedDevice>> {
+        self.0.device_list()
+            .flat_map(|info| SUPPORTED_DEVICES
                 .iter()
-                .find(|supp| (supp.is_supported)(info))
-                .zip(Some(info))
-        })
-        .inspect(|(_, info)| {
-            tracing::info!(
-                "Found {} {}",
-                info.manufacturer_string().unwrap_or(""),
-                info.product_string().unwrap_or("")
-            );
-        })
-        .collect::<Vec<_>>()
-        .first()
-        .peek(|(_, info)| {
-            tracing::info!(
-                "Selected {} {}",
-                info.manufacturer_string().unwrap_or(""),
-                info.product_string().unwrap_or("")
-            )
-        })
-        .map(|(support, info)| (support.open)(info, &api))
-        .ok_or_else(|| eyre!("No supported device found!"))?
+                .filter_map(|check| check(info)))
+            .chain(Some(DummyDevice::new()))
+            .collect::<Vec<_>>()
+    }
+
+    pub fn open(&self, supported: &dyn SupportedDevice) -> DeviceResult<BoxedDevice> {
+        supported.open(&self.0)
+    }
+
+}
+
+pub type DeviceResult<T> = Result<T, DeviceError>;
+
+#[derive(Debug)]
+pub enum DeviceError {
+    Hid(HidError),
+    Other(EyreError)
+}
+
+impl From<HidError> for DeviceError {
+    fn from(value: HidError) -> Self {
+        Self::Hid(value)
+    }
+}
+
+impl From<EyreError> for DeviceError {
+    fn from(value: EyreError) -> Self {
+        Self::Other(value)
+    }
+}
+
+impl Display for DeviceError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DeviceError::Hid(err) => Display::fmt(err, f),
+            DeviceError::Other(err) => Display::fmt(err, f)
+        }
+    }
+}
+
+impl Error for DeviceError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            DeviceError::Hid(err) => Some(err),
+            DeviceError::Other(err) => err.source()
+        }
+    }
 }

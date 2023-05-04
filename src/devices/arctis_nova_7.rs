@@ -1,14 +1,10 @@
 use std::time::{Duration, Instant};
 
-use color_eyre::eyre::ensure;
-use color_eyre::Result;
-use hidapi::{DeviceInfo, HidApi, HidDevice};
+use color_eyre::eyre::{eyre};
+use hidapi::{HidDevice};
 
 use crate::config::CallAction;
-use crate::devices::{
-    BatteryLevel, BluetoothConfig, BoxedDevice, ChatMix, Device, DeviceSupport, Equalizer, InactiveTime, Info, MicrophoneLight, MicrophoneVolume,
-    SideTone, VolumeLimiter
-};
+use crate::devices::{BatteryLevel, BluetoothConfig, ChatMix, Device, Equalizer, InactiveTime, Info, MicrophoneLight, MicrophoneVolume, SideTone, VolumeLimiter, DeviceResult as Result, CheckSupport, GenericHidDevice};
 
 const STEELSERIES: u16 = 0x1038;
 
@@ -39,41 +35,30 @@ pub struct ArcticsNova7 {
     chat_mix: ChatMix
 }
 
-impl ArcticsNova7 {
-    pub const SUPPORT: DeviceSupport = DeviceSupport {
-        is_supported: Self::is_supported,
-        open: Self::open
-    };
-    fn is_supported(device_info: &DeviceInfo) -> bool {
-        SUPPORTED_VENDORS.contains(&device_info.vendor_id())
-            && SUPPORTED_PRODUCTS.contains(&device_info.product_id())
-            && REQUIRED_INTERFACE == device_info.interface_number()
-    }
-    fn open(device_info: &DeviceInfo, api: &HidApi) -> Result<BoxedDevice> {
-        ensure!(Self::is_supported(device_info), "Device not supported");
-        let device = device_info.open_device(api)?;
-        let manufacturer = device_info
-            .manufacturer_string()
-            .unwrap_or("SteelSeries")
-            .to_string();
-        let product = device_info
-            .product_string()
-            .unwrap_or("Arctis Nova 7")
-            .to_string();
-        let name = format!("{} {}", manufacturer, product);
-        Ok(Box::new(ArcticsNova7 {
+impl From<(HidDevice, Info)> for ArcticsNova7 {
+    fn from((device, info): (HidDevice, Info)) -> Self {
+        Self {
             device,
-            name: Info {
-                manufacturer,
-                product,
-                name
-            },
+            name: info,
             last_chat_mix_adjustment: None,
             connected: false,
             battery: BatteryLevel::Unknown,
-            chat_mix: ChatMix::default()
-        }))
+            chat_mix: Default::default(),
+        }
     }
+}
+
+impl ArcticsNova7 {
+    pub const SUPPORT: CheckSupport = |info| {
+        let supported = SUPPORTED_VENDORS.contains(&info.vendor_id())
+            && SUPPORTED_PRODUCTS.contains(&info.product_id())
+            && REQUIRED_INTERFACE == info.interface_number();
+        if supported {
+            Some(Box::new(GenericHidDevice::<ArcticsNova7>::new(info, "SteelSeries", "Arctis Nova 7")))
+        } else {
+            None
+        }
+    };
 }
 
 impl Device for ArcticsNova7 {
@@ -88,10 +73,9 @@ impl Device for ArcticsNova7 {
     fn poll(&mut self) -> Result<Duration> {
         let mut report = [0u8; STATUS_BUF_SIZE];
         self.device.write(&[0x00, 0xb0])?;
-        ensure!(
-            self.device.read_timeout(&mut report, READ_TIMEOUT)? == STATUS_BUF_SIZE,
-            "Failed to correctly read data"
-        );
+        if self.device.read_timeout(&mut report, READ_TIMEOUT)? != STATUS_BUF_SIZE {
+            return Err(eyre!("Cannot read enough bytes").into())
+        }
 
         let prev_chat_mix = self.chat_mix;
         self.chat_mix = ChatMix {

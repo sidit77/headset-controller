@@ -30,7 +30,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use crate::audio::AudioSystem;
 use crate::config::{Config, EqualizerConfig, HeadsetConfig};
 use crate::debouncer::{Action, Debouncer};
-use crate::devices::{BatteryLevel, Device};
+use crate::devices::{BatteryLevel, Device, DeviceManager};
 use crate::renderer::egui_glow_tao::EguiGlow;
 use crate::renderer::{create_display, GlutinWindowContext};
 
@@ -46,7 +46,20 @@ fn main() -> Result<()> {
 
     let mut audio_system = AudioSystem::new();
 
-    let mut device = devices::dummy();//devices::find_device().unwrap();
+    let device_manager = DeviceManager::new()?;
+    let devices = device_manager.supported_devices();
+    for dev in &devices {
+        println!("{}", dev.get_info().name);
+    }
+    let mut device = {
+        let device = devices
+            .last()
+            .unwrap()
+            .as_ref();
+        device_manager.open(device)?
+    };
+
+
 
     let mut event_loop = EventLoop::new();
 
