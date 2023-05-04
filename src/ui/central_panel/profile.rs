@@ -1,10 +1,12 @@
 use egui::*;
+use tracing::instrument;
 
 use crate::config::{EqualizerConfig, Profile};
 use crate::debouncer::{Action, Debouncer};
 use crate::devices::{Device, Equalizer};
 use crate::ui::ResponseExt;
 
+#[instrument(skip_all)]
 pub fn profile_section(ui: &mut Ui, debouncer: &mut Debouncer, auto_update: bool, profile: &mut Profile, device: &dyn Device) {
     if let Some(equalizer) = device.get_equalizer() {
         equalizer_ui(ui, debouncer, auto_update, &mut profile.equalizer, equalizer);

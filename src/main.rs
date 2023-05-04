@@ -111,7 +111,8 @@ fn main() -> Result<()> {
             }
             Event::NewEvents(_) | Event::LoopDestroyed => {
                 for action in &mut debouncer {
-                    tracing::trace!("Activated action: {:?}", action);
+                    let _span = tracing::trace_span!("debouncer_event", ?action).entered();
+                    tracing::trace!("Processing event");
                     match action {
                         Action::UpdateSystemAudio => {
                             let headset = config.get_headset(&device.get_info().name);
@@ -181,6 +182,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+#[instrument(skip_all)]
 fn submit_profile_change(debouncer: &mut Debouncer) {
     let actions = [
         Action::UpdateSideTone,
@@ -192,6 +194,7 @@ fn submit_profile_change(debouncer: &mut Debouncer) {
     debouncer.force_all(actions);
 }
 
+#[instrument(skip_all)]
 fn submit_full_change(debouncer: &mut Debouncer) {
     submit_profile_change(debouncer);
     let actions = [
@@ -286,31 +289,6 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
         }
     }
 }
-
-/*
-fn apply_profile(profile: &Profile, device: &dyn Device) {
-    if let Some(equalizer) = device.get_equalizer() {
-        let levels = match &profile.equalizer {
-            EqualizerConfig::Preset(i) => equalizer.presets()[*i as usize].1,
-            EqualizerConfig::Custom(levels) => &levels
-        };
-        equalizer.set_levels(&levels)
-            .log_ok("Could not set equalizer");
-    }
-    if let Some(side_tone) = device.get_side_tone() {
-        side_tone.set_level(profile.side_tone)
-            .log_ok("Could not set sidetone");
-    }
-    if let Some(mic_volume) = device.get_mic_volume() {
-        mic_volume.set_level(profile.microphone_volume)
-            .log_ok("Could not set mic level");
-    }
-    if let Some(volume_limiter) = device.get_volume_limiter() {
-        volume_limiter.set_enabled(profile.volume_limiter)
-            .log_ok("Could not set volume limit");
-    }
-}
-*/
 
 struct EguiWindow {
     gl_window: GlutinWindowContext,

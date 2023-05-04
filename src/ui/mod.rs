@@ -5,6 +5,7 @@ use egui::panel::Side;
 use egui::{CentralPanel, Context, Response, SidePanel};
 use once_cell::sync::Lazy;
 use tao::window::Icon;
+use tracing::instrument;
 
 use crate::audio::AudioSystem;
 use crate::config::Config;
@@ -29,6 +30,7 @@ pub static WINDOW_ICON: Lazy<Icon> = Lazy::new(|| {
     Icon::from_rgba(buf, info.width, info.height).unwrap()
 });
 
+#[instrument(skip_all)]
 pub fn config_ui(ctx: &Context, debouncer: &mut Debouncer, config: &mut Config, device: &dyn Device, audio_system: &mut AudioSystem) {
     SidePanel::new(Side::Left, "Profiles")
         .resizable(true)
@@ -42,6 +44,7 @@ trait ResponseExt {
 }
 
 impl ResponseExt for Response {
+    #[instrument(skip(self, debouncer, action), name = "submit_response")]
     fn submit(self, debouncer: &mut Debouncer, auto_update: bool, action: Action) -> Self {
         if self.changed() {
             debouncer.submit(Action::SaveConfig);

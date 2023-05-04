@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant};
 
 use fixed_map::{Key, Map};
+use tracing::instrument;
 
 use crate::util::PeekExt;
 
@@ -38,10 +39,12 @@ impl Debouncer {
         Self(Map::new())
     }
 
+    #[instrument(skip(self))]
     pub fn submit(&mut self, action: Action) {
         let now = Instant::now();
         let old = self.0.insert(action, now);
         debug_assert!(old.map_or(true, |old| old <= now));
+        tracing::trace!("Received new action");
     }
 
     pub fn submit_all(&mut self, actions: impl IntoIterator<Item = Action>) {
@@ -54,9 +57,11 @@ impl Debouncer {
         self.0.iter().map(|(k, v)| *v + k.timeout()).min()
     }
 
+    #[instrument(skip(self))]
     pub fn force(&mut self, action: Action) {
         if let Some(time) = self.0.get_mut(action) {
             *time -= action.timeout();
+            tracing::trace!("Skipped timeout");
         }
     }
 

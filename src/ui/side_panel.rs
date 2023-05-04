@@ -1,10 +1,12 @@
 use egui::*;
+use tracing::instrument;
 
 use crate::config::{Config, Profile};
 use crate::debouncer::{Action, Debouncer};
 use crate::devices::Device;
 use crate::submit_profile_change;
 
+#[instrument(skip_all)]
 pub fn side_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config, device: &dyn Device) {
     let headset = config.get_headset(&device.get_info().name);
     ui.style_mut()

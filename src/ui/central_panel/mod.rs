@@ -2,6 +2,7 @@ mod headset;
 mod profile;
 
 use egui::*;
+use tracing::instrument;
 
 use crate::audio::AudioSystem;
 use crate::config::Config;
@@ -11,6 +12,7 @@ use crate::submit_full_change;
 use crate::ui::central_panel::headset::headset_section;
 use crate::ui::central_panel::profile::profile_section;
 
+#[instrument(skip_all)]
 pub fn central_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config, device: &dyn Device, audio_system: &mut AudioSystem) {
     ui.style_mut()
         .text_styles
