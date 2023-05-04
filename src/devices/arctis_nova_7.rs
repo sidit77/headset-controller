@@ -2,6 +2,7 @@ use std::time::{Duration, Instant};
 
 use color_eyre::eyre::{eyre};
 use hidapi::{HidDevice};
+use tracing::instrument;
 
 use crate::config::CallAction;
 use crate::devices::{BatteryLevel, BluetoothConfig, ChatMix, Device, Equalizer, InactiveTime, Info, MicrophoneLight, MicrophoneVolume, SideTone, VolumeLimiter, DeviceResult as Result, CheckSupport, GenericHidDevice};
@@ -70,6 +71,7 @@ impl Device for ArcticsNova7 {
         self.connected
     }
 
+    #[instrument(skip(self))]
     fn poll(&mut self) -> Result<Duration> {
         let mut report = [0u8; STATUS_BUF_SIZE];
         self.device.write(&[0x00, 0xb0])?;
@@ -163,9 +165,11 @@ impl SideTone for ArcticsNova7 {
     fn levels(&self) -> u8 {
         4
     }
+
+    #[instrument(skip(self))]
     fn set_level(&self, level: u8) -> Result<()> {
+        tracing::debug!("Attempting to write new value to device!");
         assert!(level < SideTone::levels(self));
-        tracing::debug!("Setting sidetone to {}", level);
         self.device.write(&[0x00, 0x39, level])?;
         Ok(())
     }
@@ -175,17 +179,21 @@ impl MicrophoneVolume for ArcticsNova7 {
     fn levels(&self) -> u8 {
         8
     }
+
+    #[instrument(skip(self))]
     fn set_level(&self, level: u8) -> Result<()> {
+        tracing::debug!("Attempting to write new value to device!");
         assert!(level < MicrophoneVolume::levels(self));
-        tracing::info!("Setting mic volume to {}", level);
         self.device.write(&[0x00, 0x37, level])?;
         Ok(())
     }
 }
 
 impl VolumeLimiter for ArcticsNova7 {
+
+    #[instrument(skip(self))]
     fn set_enabled(&self, enabled: bool) -> Result<()> {
-        tracing::info!("Setting volume limiter to {}", enabled);
+        tracing::debug!("Attempting to write new value to device!");
         self.device.write(&[0x00, 0x3a, u8::from(enabled)])?;
         Ok(())
     }
@@ -213,14 +221,15 @@ impl Equalizer for ArcticsNova7 {
         ]
     }
 
+    #[instrument(skip(self))]
     fn set_levels(&self, levels: &[u8]) -> Result<()> {
+        tracing::debug!("Attempting to write new value to device!");
         assert_eq!(levels.len(), Equalizer::bands(self) as usize);
         assert!(
             levels
                 .iter()
                 .all(|i| *i >= self.base_level() - self.variance() && *i <= self.base_level() + self.variance())
         );
-        tracing::info!("Setting equalizer to {:?}", levels);
         let mut msg = [0u8; 13];
         msg[1] = 0x33;
         msg[2..12].copy_from_slice(levels);
@@ -230,13 +239,16 @@ impl Equalizer for ArcticsNova7 {
 }
 
 impl BluetoothConfig for ArcticsNova7 {
+
+    #[instrument(skip(self))]
     fn set_call_action(&self, action: CallAction) -> Result<()> {
-        tracing::info!("Setting call action to {:?}", action);
+        tracing::debug!("Attempting to write new value to device!");
         Ok(())
     }
 
+    #[instrument(skip(self))]
     fn set_auto_enabled(&self, enabled: bool) -> Result<()> {
-        tracing::info!("Setting auto bluetooth to {:?}", enabled);
+        tracing::debug!("Attempting to write new value to device!");
         Ok(())
     }
 }
@@ -246,16 +258,19 @@ impl MicrophoneLight for ArcticsNova7 {
         4
     }
 
+    #[instrument(skip(self))]
     fn set_light_strength(&self, level: u8) -> Result<()> {
-        tracing::info!("Mic light to {:?}", level);
+        tracing::debug!("Attempting to write new value to device!");
         Ok(())
     }
 }
 
 impl InactiveTime for ArcticsNova7 {
+
+    #[instrument(skip(self))]
     fn set_inactive_time(&self, minutes: u8) -> Result<()> {
+        tracing::debug!("Attempting to write new value to device!");
         assert!(minutes > 0);
-        tracing::info!("Setting inactive time to {:?}", minutes);
         Ok(())
     }
 }

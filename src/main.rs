@@ -49,7 +49,7 @@ fn main() -> Result<()> {
     let device_manager = DeviceManager::new()?;
     let devices = device_manager.supported_devices();
     for dev in &devices {
-        println!("{}", dev.get_info().name);
+        tracing::info!("Found: {}", dev.get_info().name);
     }
     let mut device = {
         let device = devices
@@ -58,8 +58,6 @@ fn main() -> Result<()> {
             .as_ref();
         device_manager.open(device)?
     };
-
-
 
     let mut event_loop = EventLoop::new();
 
