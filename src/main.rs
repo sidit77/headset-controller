@@ -6,9 +6,9 @@ mod debouncer;
 mod devices;
 mod notification;
 mod renderer;
+mod tray;
 mod ui;
 mod util;
-mod tray;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -63,7 +63,6 @@ fn main() -> Result<()> {
     let mut tray = AppTray::new(&event_loop);
     update_tray(&mut tray, &mut config, &device.get_info().name);
 
-
     let mut window: Option<EguiWindow> = match std::env::args().any(|arg| arg.eq("--quiet")) {
         true => None,
         false => Some(EguiWindow::new(&event_loop))
@@ -92,20 +91,39 @@ fn main() -> Result<()> {
         }
 
         match event {
-            Event::MenuEvent { menu_id, .. } => match tray.handle_event(menu_id) {
-                Some(TrayEvent::Open) => {
-                    audio_system.refresh_devices();
-                    match &mut window {
-                        None => window = Some(EguiWindow::new(event_loop)),
-                        Some(window) => {
-                            window.gl_window.window().set_focus();
+            Event::MenuEvent { menu_id, .. } => {
+                let _span = tracing::trace_span!("tray_menu_event").entered();
+                match tray.handle_event(menu_id) {
+                    Some(TrayEvent::Open) => {
+                        audio_system.refresh_devices();
+                        match &mut window {
+                            None => window = Some(EguiWindow::new(event_loop)),
+                            Some(window) => {
+                                window.gl_window.window().set_focus();
+                            }
                         }
                     }
-                },
-                Some(TrayEvent::Quit) => {
-                    *control_flow = ControlFlow::Exit;
-                },
-                _ => {}
+                    Some(TrayEvent::Quit) => {
+                        *control_flow = ControlFlow::Exit;
+                    }
+                    Some(TrayEvent::Profile(id)) => {
+                        let _span = tracing::trace_span!("profile_change", id).entered();
+                        let headset = config.get_headset(&device.get_info().name);
+                        if id as u32 != headset.selected_profile_index {
+                            let len = headset.profiles.len();
+                            if id < len {
+                                headset.selected_profile_index = id as u32;
+                                submit_profile_change(&mut debouncer);
+                                debouncer.submit_all([Action::SaveConfig, Action::UpdateTray]);
+                            } else {
+                                tracing::warn!(len, "Profile id out of range")
+                            }
+                        } else {
+                            tracing::trace!("Profile already selected");
+                        }
+                    }
+                    _ => {}
+                }
             }
             Event::NewEvents(_) | Event::LoopDestroyed => {
                 for action in &mut debouncer {
@@ -120,7 +138,7 @@ fn main() -> Result<()> {
                             config
                                 .save()
                                 .unwrap_or_else(|err| tracing::warn!("Could not save config: {}", err));
-                        },
+                        }
                         Action::UpdateTray => update_tray(&mut tray, &mut config, &device.get_info().name),
                         action => {
                             let headset = config.get_headset(&device.get_info().name);
@@ -293,11 +311,9 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
 #[instrument(skip_all)]
 pub fn update_tray(tray: &mut AppTray, config: &mut Config, device_name: &str) {
     let headset = config.get_headset(device_name);
-    let names = headset
-        .profiles
-        .iter()
-        .map(|p| p.name.as_str());
-    tray.build_menu(names);
+    let selected = headset.selected_profile_index as usize;
+    let profiles = &headset.profiles;
+    tray.build_menu(profiles.len(), |id| (profiles[id].name.as_str(), id == selected));
 }
 
 struct EguiWindow {
