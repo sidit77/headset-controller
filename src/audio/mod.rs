@@ -5,7 +5,8 @@ use color_eyre::Result;
 mod platform;
 
 #[cfg(not(target_os = "windows"))]
-compile_error!("unsupported right now");
+#[path = "platforms/dummy.rs"]
+mod platform;
 
 pub use platform::{AudioDevice, AudioLoopback, AudioManager};
 

@@ -34,6 +34,9 @@ impl GlutinWindowContext {
             .with_title("Headset Controller") // Keep hidden until we've painted something. See https://github.com/emilk/egui/pull/2279
             .with_visible(false);
 
+        #[cfg(windows)]
+        let winit_window_builder = tao::platform::windows::WindowBuilderExtWindows::with_drag_and_drop(winit_window_builder, false);
+
         let config_template_builder = ConfigTemplateBuilder::new()
             .prefer_hardware_accelerated(None)
             .with_depth_size(0)

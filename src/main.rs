@@ -18,7 +18,6 @@ use egui::Visuals;
 use glow::Context;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget};
-use tao::platform::run_return::EventLoopExtRunReturn;
 use tracing::instrument;
 use tracing_error::ErrorLayer;
 use tracing_subscriber::filter::{LevelFilter, Targets};
