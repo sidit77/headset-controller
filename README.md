@@ -12,7 +12,8 @@ A (soon: cross-platform) app to configure wireless headphones
 - [x] Devices selection
 - [ ] handling device disconnects
 - [ ] Implement the remaining functions for arctis
-- [ ] log file?
+- [x] log file?
 - [x] better system tray
 - [ ] improve look of the equalizer
 - [ ] more tooltips (language file)
+- [ ] linux support

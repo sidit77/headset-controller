@@ -1,8 +1,11 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::fs::File;
+use std::io::BufWriter;
+use std::path::{Path, PathBuf};
 
 use color_eyre::Result;
 use directories_next::BaseDirs;
+use once_cell::sync::Lazy;
 use ron::ser::{to_string_pretty, PrettyConfig};
 use serde::{Deserialize, Serialize};
 
@@ -96,11 +99,24 @@ impl Default for Config {
     }
 }
 
+static BASE_PATH: Lazy<BaseDirs> = Lazy::new(|| {
+    BaseDirs::new().expect("can not get directories")
+});
+static CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
+    BASE_PATH.config_dir().join("HeadsetController.ron")
+});
+static LOG_PATH: Lazy<PathBuf> = Lazy::new(|| {
+    BASE_PATH.config_dir().join("HeadsetController.log")
+});
+
+pub fn log_file() -> BufWriter<File> {
+    BufWriter::new(File::create(LOG_PATH.as_path()).expect("Can not open file"))
+}
+
 impl Config {
-    pub fn path() -> PathBuf {
-        let dirs = BaseDirs::new().expect("can not get directories");
-        let config_dir = dirs.config_dir();
-        config_dir.join("HeadsetController.ron")
+
+    pub fn path() -> &'static Path {
+        CONFIG_PATH.as_path()
     }
 
     pub fn load() -> Result<Self> {
