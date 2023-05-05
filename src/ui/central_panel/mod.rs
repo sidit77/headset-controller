@@ -31,7 +31,7 @@ pub fn central_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config
         .size = 14.0;
     ScrollArea::both().auto_shrink([false; 2]).show(ui, |ui| {
         let auto_update = config.auto_apply_changes;
-        let headset = config.get_headset(&device.name());
+        let headset = config.get_headset(device.name());
         ui.heading("Profile");
         ui.add_space(7.0);
         profile_section(ui, debouncer, auto_update, headset.selected_profile(), device);

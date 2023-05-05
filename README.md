@@ -9,10 +9,10 @@ A (soon: cross-platform) app to configure wireless headphones
 
 - [ ] Panic popup
 - [ ] Normal error handling
-- [ ] Devices selection
+- [x] Devices selection
 - [ ] handling device disconnects
 - [ ] Implement the remaining functions for arctis
 - [ ] log file?
-- [ ] better system tray
+- [x] better system tray
 - [ ] improve look of the equalizer
 - [ ] more tooltips (language file)

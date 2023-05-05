@@ -3,12 +3,11 @@ use tracing::instrument;
 
 use crate::config::{Config, Profile};
 use crate::debouncer::{Action, Debouncer};
-use crate::devices::Device;
+use crate::devices::{Device, SupportedDevice};
 use crate::submit_profile_change;
 
 #[instrument(skip_all)]
-pub fn side_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config, device: &dyn Device) {
-    let headset = config.get_headset(&device.name());
+pub fn side_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config, device: &dyn Device, device_list: &[Box<dyn SupportedDevice>]) {
     ui.style_mut()
         .text_styles
         .get_mut(&TextStyle::Body)
@@ -18,12 +17,32 @@ pub fn side_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config, d
         RichText::from(&device.get_info().manufacturer)
             .heading()
             .size(30.0)
-    );
-    ui.label(
-        RichText::from(&device.get_info().product)
-            .heading()
-            .size(20.0)
-    );
+    )
+    .union(
+        ui.label(
+            RichText::from(&device.get_info().product)
+                .heading()
+                .size(20.0)
+        )
+    )
+    .context_menu(|ui| {
+        for device in device_list.iter() {
+            let resp = ui
+                .with_layout(Layout::default().with_cross_justify(true), |ui| {
+                    let active = config
+                        .preferred_device
+                        .as_ref()
+                        .map_or(false, |pref| pref.eq(device.name()));
+                    ui.selectable_label(active, device.name())
+                })
+                .inner;
+            if resp.clicked() {
+                ui.close_menu();
+                config.preferred_device = Some(device.name().to_string());
+                debouncer.submit_all([Action::SaveConfig, Action::SwitchDevice]);
+            }
+        }
+    });
     ui.separator();
     if device.is_connected() {
         if let Some(battery) = device.get_battery_status() {
@@ -44,6 +63,7 @@ pub fn side_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config, d
         ui.label("Not Connected");
     }
     ui.separator();
+    let headset = config.get_headset(device.name());
     ui.horizontal(|ui| {
         ui.heading("Profiles");
         let resp = ui

@@ -82,14 +82,16 @@ impl Default for HeadsetConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     headsets: HashMap<String, HeadsetConfig>,
-    pub auto_apply_changes: bool
+    pub auto_apply_changes: bool,
+    pub preferred_device: Option<String>
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             headsets: HashMap::new(),
-            auto_apply_changes: true
+            auto_apply_changes: true,
+            preferred_device: None
         }
     }
 }

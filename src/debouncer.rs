@@ -20,13 +20,15 @@ pub enum Action {
     UpdateAutoBluetooth,
 
     UpdateSystemAudio,
-    UpdateTray
+    UpdateTray,
+    SwitchDevice
 }
 
 impl Action {
     fn timeout(self) -> Duration {
         match self {
             Action::SaveConfig => Duration::from_secs(10),
+            Action::SwitchDevice => Duration::from_millis(10),
             _ => Duration::from_millis(500)
         }
     }

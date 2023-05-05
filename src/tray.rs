@@ -1,5 +1,5 @@
 use tao::event_loop::EventLoopWindowTarget;
-use tao::menu::{ContextMenu, CustomMenuItem, MenuId, MenuItemAttributes};
+use tao::menu::{ContextMenu, CustomMenuItem, MenuId, MenuItem, MenuItemAttributes};
 use tao::system_tray::{SystemTray, SystemTrayBuilder};
 
 use crate::ui::WINDOW_ICON;
@@ -62,6 +62,7 @@ impl TrayMenu {
             profile_buttons.push(profiles.add_item(item));
         }
         menu.add_submenu("Profiles", profile_count > 0, profiles);
+        menu.add_native_item(MenuItem::Separator);
         let open_button = menu.add_item(MenuItemAttributes::new("Open").with_id(next(&mut id)));
         let quit_button = menu.add_item(MenuItemAttributes::new("Quit").with_id(next(&mut id)));
         (

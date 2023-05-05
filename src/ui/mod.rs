@@ -10,7 +10,7 @@ use tracing::instrument;
 use crate::audio::AudioSystem;
 use crate::config::Config;
 use crate::debouncer::{Action, Debouncer};
-use crate::devices::Device;
+use crate::devices::{Device, SupportedDevice};
 use crate::ui::central_panel::central_panel;
 use crate::ui::side_panel::side_panel;
 
@@ -31,11 +31,14 @@ pub static WINDOW_ICON: Lazy<Icon> = Lazy::new(|| {
 });
 
 #[instrument(skip_all)]
-pub fn config_ui(ctx: &Context, debouncer: &mut Debouncer, config: &mut Config, device: &dyn Device, audio_system: &mut AudioSystem) {
+pub fn config_ui(
+    ctx: &Context, debouncer: &mut Debouncer, config: &mut Config, device: &dyn Device, device_list: &[Box<dyn SupportedDevice>],
+    audio_system: &mut AudioSystem
+) {
     SidePanel::new(Side::Left, "Profiles")
         .resizable(true)
         .width_range(175.0..=400.0)
-        .show(ctx, |ui| side_panel(ui, debouncer, config, device));
+        .show(ctx, |ui| side_panel(ui, debouncer, config, device, device_list));
     CentralPanel::default().show(ctx, |ui| central_panel(ui, debouncer, config, device, audio_system));
 }
 
