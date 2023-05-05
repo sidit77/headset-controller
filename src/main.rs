@@ -51,17 +51,19 @@ fn main() -> Result<()> {
     let device_manager = DeviceManager::new()?;
     let devices = device_manager.supported_devices();
     for dev in &devices {
-        tracing::info!("Found: {}", dev.get_info().name);
+        tracing::info!("Found: {}", dev.name());
     }
-    let mut device = {
-        let device = devices.last().unwrap().as_ref();
-        device_manager.open(device)?
-    };
+    let mut device = devices
+            .last()
+            .and_then(|d| device_manager
+                .open(d.as_ref())
+                .map_err(|err| tracing::error!("Failed to open device: {:?}", err))
+                .ok());
 
     let mut event_loop = EventLoop::new();
 
     let mut tray = AppTray::new(&event_loop);
-    update_tray(&mut tray, &mut config, &device.get_info().name);
+    update_tray(&mut tray, &mut config, device.as_ref().map(|d|d.name()));
 
     let mut window: Option<EguiWindow> = match std::env::args().any(|arg| arg.eq("--quiet")) {
         true => None,
@@ -77,8 +79,9 @@ fn main() -> Result<()> {
         if window
             .as_mut()
             .map(|w| {
-                w.handle_events(&event, |egui_ctx| {
-                    ui::config_ui(egui_ctx, &mut debouncer, &mut config, device.as_ref(), &mut audio_system);
+                w.handle_events(&event, |egui_ctx| match &device {
+                    Some(device) => ui::config_ui(egui_ctx, &mut debouncer, &mut config, device.as_ref(), &mut audio_system),
+                    None => ui::no_device_ui(egui_ctx)
                 })
             })
             .unwrap_or(false)
@@ -108,18 +111,20 @@ fn main() -> Result<()> {
                     }
                     Some(TrayEvent::Profile(id)) => {
                         let _span = tracing::trace_span!("profile_change", id).entered();
-                        let headset = config.get_headset(&device.get_info().name);
-                        if id as u32 != headset.selected_profile_index {
-                            let len = headset.profiles.len();
-                            if id < len {
-                                headset.selected_profile_index = id as u32;
-                                submit_profile_change(&mut debouncer);
-                                debouncer.submit_all([Action::SaveConfig, Action::UpdateTray]);
+                        if let Some(device) = &device {
+                            let headset = config.get_headset(device.name());
+                            if id as u32 != headset.selected_profile_index {
+                                let len = headset.profiles.len();
+                                if id < len {
+                                    headset.selected_profile_index = id as u32;
+                                    submit_profile_change(&mut debouncer);
+                                    debouncer.submit_all([Action::SaveConfig, Action::UpdateTray]);
+                                } else {
+                                    tracing::warn!(len, "Profile id out of range")
+                                }
                             } else {
-                                tracing::warn!(len, "Profile id out of range")
+                                tracing::trace!("Profile already selected");
                             }
-                        } else {
-                            tracing::trace!("Profile already selected");
                         }
                     }
                     _ => {}
@@ -130,8 +135,8 @@ fn main() -> Result<()> {
                     let _span = tracing::trace_span!("debouncer_event", ?action).entered();
                     tracing::trace!("Processing event");
                     match action {
-                        Action::UpdateSystemAudio => {
-                            let headset = config.get_headset(&device.get_info().name);
+                        Action::UpdateSystemAudio => if let Some(device) = &device {
+                            let headset = config.get_headset(&device.name());
                             audio_system.apply(&headset.os_audio, device.is_connected())
                         }
                         Action::SaveConfig => {
@@ -139,46 +144,47 @@ fn main() -> Result<()> {
                                 .save()
                                 .unwrap_or_else(|err| tracing::warn!("Could not save config: {}", err));
                         }
-                        Action::UpdateTray => update_tray(&mut tray, &mut config, &device.get_info().name),
-                        action => {
-                            let headset = config.get_headset(&device.get_info().name);
+                        Action::UpdateTray => update_tray(&mut tray, &mut config, device.as_ref().map(|d|d.name())),
+                        action => if let Some(device) = &device {
+                            let headset = config.get_headset(&device.name());
                             apply_config_to_device(action, device.as_ref(), headset)
                         }
                     }
                 }
+                if let Some(device) = &mut device {
+                    if next_device_poll <= Instant::now() {
+                        let _span = tracing::trace_span!("device_poll").entered();
+                        let (last_connected, last_battery) = (device.is_connected(), device.get_battery_status());
+                        next_device_poll = Instant::now() + device.poll().unwrap();
 
-                if next_device_poll <= Instant::now() {
-                    let _span = tracing::trace_span!("device_poll").entered();
-                    let (last_connected, last_battery) = (device.is_connected(), device.get_battery_status());
-                    next_device_poll = Instant::now() + device.poll().unwrap();
-
-                    if last_connected != device.is_connected() {
-                        let mut msg = match device.is_connected() {
-                            true => "Connected",
-                            false => "Disconnected"
+                        if last_connected != device.is_connected() {
+                            let mut msg = match device.is_connected() {
+                                true => "Connected",
+                                false => "Disconnected"
+                            }
+                                .to_string();
+                            let battery = [last_battery, device.get_battery_status()]
+                                .into_iter()
+                                .filter_map(|b| match b {
+                                    Some(BatteryLevel::Level(l)) => Some(l),
+                                    _ => None
+                                })
+                                .min();
+                            if let Some(level) = battery {
+                                msg = format!("{} (Battery: {}%)", msg, level);
+                            }
+                            notification::notify(&device.name(), &msg, Duration::from_secs(2))
+                                .unwrap_or_else(|err| tracing::warn!("Can not create notification: {}", err));
+                            debouncer.submit(Action::UpdateSystemAudio);
+                            debouncer.force(Action::UpdateSystemAudio);
                         }
-                        .to_string();
-                        let battery = [last_battery, device.get_battery_status()]
-                            .into_iter()
-                            .filter_map(|b| match b {
-                                Some(BatteryLevel::Level(l)) => Some(l),
-                                _ => None
-                            })
-                            .min();
-                        if let Some(level) = battery {
-                            msg = format!("{} (Battery: {}%)", msg, level);
+                        if last_battery != device.get_battery_status() {
+                            tray.set_tooltip(&match device.get_battery_status() {
+                                Some(BatteryLevel::Charging) => format!("{}\nBattery: Charging", device.get_info()),
+                                Some(BatteryLevel::Level(level)) => format!("{}\nBattery: {}%", device.get_info(), level),
+                                _ => format!("{}\nDisconnected", device.get_info())
+                            });
                         }
-                        notification::notify(&device.get_info().name, &msg, Duration::from_secs(2))
-                            .unwrap_or_else(|err| tracing::warn!("Can not create notification: {}", err));
-                        debouncer.submit(Action::UpdateSystemAudio);
-                        debouncer.force(Action::UpdateSystemAudio);
-                    }
-                    if last_battery != device.get_battery_status() {
-                        tray.set_tooltip(&match device.get_battery_status() {
-                            Some(BatteryLevel::Charging) => format!("{}\nBattery: Charging", device.get_info()),
-                            Some(BatteryLevel::Level(level)) => format!("{}\nBattery: {}%", device.get_info(), level),
-                            _ => format!("{}\nDisconnected", device.get_info())
-                        });
                     }
                 }
             }
@@ -186,14 +192,16 @@ fn main() -> Result<()> {
         }
         if !matches!(*control_flow, ControlFlow::ExitWithCode(_)) {
             let next_window_update = window.as_ref().and_then(|w| w.next_repaint);
-            let next_update = [Some(next_device_poll), next_window_update, debouncer.next_action()]
+            let next_update = [device.as_ref().map(|_|next_device_poll), next_window_update, debouncer.next_action()]
                 .into_iter()
                 .flatten()
-                .min()
-                .unwrap();
-            *control_flow = match next_update <= Instant::now() {
-                true => ControlFlow::Poll,
-                false => ControlFlow::WaitUntil(next_update)
+                .min();
+            *control_flow = match next_update {
+                Some(next_update) => match next_update <= Instant::now() {
+                    true => ControlFlow::Poll,
+                    false => ControlFlow::WaitUntil(next_update)
+                },
+                None => ControlFlow::Wait
             };
         }
     });
@@ -226,7 +234,7 @@ fn submit_full_change(debouncer: &mut Debouncer) {
     debouncer.force_all(actions);
 }
 
-#[instrument(skip_all, fields(name = %device.get_info().name))]
+#[instrument(skip_all, fields(name = %device.name()))]
 fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut HeadsetConfig) {
     if device.is_connected() {
         match action {
@@ -309,11 +317,16 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
 }
 
 #[instrument(skip_all)]
-pub fn update_tray(tray: &mut AppTray, config: &mut Config, device_name: &str) {
-    let headset = config.get_headset(device_name);
-    let selected = headset.selected_profile_index as usize;
-    let profiles = &headset.profiles;
-    tray.build_menu(profiles.len(), |id| (profiles[id].name.as_str(), id == selected));
+pub fn update_tray(tray: &mut AppTray, config: &mut Config, device_name: Option<&str>) {
+    match device_name {
+        None => tray.build_menu(0, |_| ("", false)),
+        Some(device_name) => {
+            let headset = config.get_headset(device_name);
+            let selected = headset.selected_profile_index as usize;
+            let profiles = &headset.profiles;
+            tray.build_menu(profiles.len(), |id| (profiles[id].name.as_str(), id == selected));
+        }
+    }
 }
 
 struct EguiWindow {

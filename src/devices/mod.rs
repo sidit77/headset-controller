@@ -97,6 +97,9 @@ pub trait Device {
     fn is_connected(&self) -> bool;
     fn poll(&mut self) -> DeviceResult<Duration>;
 
+    fn name(&self) -> &str {
+        &self.get_info().name
+    }
     fn get_battery_status(&self) -> Option<BatteryLevel> {
         None
     }
@@ -131,6 +134,10 @@ pub type BoxedDevice = Box<dyn Device>;
 pub trait SupportedDevice {
     fn get_info(&self) -> &Info;
     fn open(&self, api: &HidApi) -> DeviceResult<BoxedDevice>;
+
+    fn name(&self) -> &str {
+        &self.get_info().name
+    }
 }
 
 pub type CheckSupport = fn(info: &DeviceInfo) -> Option<Box<dyn SupportedDevice>>;

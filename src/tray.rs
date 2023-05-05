@@ -61,7 +61,7 @@ impl TrayMenu {
                 .with_selected(selected);
             profile_buttons.push(profiles.add_item(item));
         }
-        menu.add_submenu("Profiles", true, profiles);
+        menu.add_submenu("Profiles", profile_count > 0, profiles);
         let open_button = menu.add_item(MenuItemAttributes::new("Open").with_id(next(&mut id)));
         let quit_button = menu.add_item(MenuItemAttributes::new("Quit").with_id(next(&mut id)));
         (

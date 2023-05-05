@@ -2,7 +2,7 @@ mod central_panel;
 mod side_panel;
 
 use egui::panel::Side;
-use egui::{CentralPanel, Context, Response, SidePanel};
+use egui::{CentralPanel, Context, Response, RichText, SidePanel};
 use once_cell::sync::Lazy;
 use tao::window::Icon;
 use tracing::instrument;
@@ -37,6 +37,14 @@ pub fn config_ui(ctx: &Context, debouncer: &mut Debouncer, config: &mut Config, 
         .width_range(175.0..=400.0)
         .show(ctx, |ui| side_panel(ui, debouncer, config, device));
     CentralPanel::default().show(ctx, |ui| central_panel(ui, debouncer, config, device, audio_system));
+}
+
+pub fn no_device_ui(ctx: &Context) {
+    CentralPanel::default().show(ctx, |ctx| {
+        ctx.centered_and_justified(|ctx| {
+            ctx.label(RichText::new("No supported device detected!").size(20.0));
+        });
+    });
 }
 
 trait ResponseExt {
