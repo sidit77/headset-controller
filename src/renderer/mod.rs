@@ -10,7 +10,6 @@ use glutin_tao::{finalize_window, ApiPrefence, DisplayBuilder};
 use raw_window_handle::HasRawWindowHandle;
 use tao::dpi::{LogicalSize, PhysicalSize};
 use tao::event_loop::EventLoopWindowTarget;
-use tao::platform::windows::WindowBuilderExtWindows;
 use tao::window::{Window, WindowBuilder};
 
 /// The majority of `GlutinWindowContext` is taken from `eframe`
@@ -28,7 +27,6 @@ impl GlutinWindowContext {
     unsafe fn new(event_loop: &EventLoopWindowTarget<()>) -> Self {
         let winit_window_builder = WindowBuilder::new()
             .with_resizable(true)
-            .with_drag_and_drop(false)
             .with_inner_size(LogicalSize { width: 800.0, height: 600.0 })
             .with_window_icon(Some(crate::ui::WINDOW_ICON.clone()))
             .with_title("Headset Controller") // Keep hidden until we've painted something. See https://github.com/emilk/egui/pull/2279

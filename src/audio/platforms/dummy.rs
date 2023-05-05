@@ -1,10 +1,11 @@
-use anyhow::{bail, Result};
+use color_eyre::eyre::bail;
+use color_eyre::Result;
 
 #[derive(Debug, Clone)]
 pub struct AudioManager;
 impl AudioManager {
 
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new() -> Result<Self> {
         bail!("Not supported on this platform!")
     }
 
