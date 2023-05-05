@@ -1,13 +1,12 @@
 mod arctis_nova_7;
 mod dummy;
 
-use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::time::Duration;
 
 use color_eyre::eyre::Error as EyreError;
-use hidapi::{DeviceInfo, HidApi, HidDevice, HidError};
+use hidapi::{DeviceInfo, HidApi, HidDevice};
 
 use crate::config::CallAction;
 use crate::devices::arctis_nova_7::ArcticsNova7;
@@ -208,13 +207,15 @@ impl DeviceManager {
     }
 }
 
-pub type DeviceResult<T> = Result<T, DeviceError>;
+pub type DeviceResult<T> = Result<T, EyreError>;
 
+/*
 #[derive(Debug)]
 pub enum DeviceError {
     Hid(HidError),
     Other(EyreError)
 }
+
 
 impl From<HidError> for DeviceError {
     fn from(value: HidError) -> Self {
@@ -245,3 +246,4 @@ impl Error for DeviceError {
         }
     }
 }
+*/

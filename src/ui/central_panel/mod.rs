@@ -68,9 +68,9 @@ pub fn central_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config
                 .unwrap_or(false);
             if ui.checkbox(&mut auto_start, "Run On Startup").changed() {
                 if auto_start {
-                    autostart::enable().unwrap_or_else(|err| tracing::warn!("Can not enable auto start: {}", err));
+                    autostart::enable().unwrap_or_else(|err| tracing::warn!("Can not enable auto start: {:?}", err));
                 } else {
-                    autostart::disable().unwrap_or_else(|err| tracing::warn!("Can not disable auto start: {}", err));
+                    autostart::disable().unwrap_or_else(|err| tracing::warn!("Can not disable auto start: {:?}", err));
                 }
             }
         }

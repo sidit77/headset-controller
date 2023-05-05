@@ -146,7 +146,7 @@ fn main() -> Result<()> {
                         Action::SaveConfig => {
                             config
                                 .save()
-                                .unwrap_or_else(|err| tracing::warn!("Could not save config: {}", err));
+                                .unwrap_or_else(|err| tracing::warn!("Could not save config: {:?}", err));
                         }
                         Action::UpdateTray => update_tray(&mut tray, &mut config, device.as_ref().map(|d| d.name())),
                         action => {
@@ -180,7 +180,7 @@ fn main() -> Result<()> {
                                 msg = format!("{} (Battery: {}%)", msg, level);
                             }
                             notification::notify(device.name(), &msg, Duration::from_secs(2))
-                                .unwrap_or_else(|err| tracing::warn!("Can not create notification: {}", err));
+                                .unwrap_or_else(|err| tracing::warn!("Can not create notification: {:?}", err));
                             debouncer.submit(Action::UpdateSystemAudio);
                             debouncer.force(Action::UpdateSystemAudio);
                         }
@@ -249,7 +249,7 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
                     let _span = tracing::trace_span!("sidetone").entered();
                     sidetone
                         .set_level(headset.selected_profile().side_tone)
-                        .unwrap_or_else(|err| tracing::warn!("Can not apply side tone: {}", err));
+                        .unwrap_or_else(|err| tracing::warn!("Can not apply side tone: {:?}", err));
                 }
             }
             Action::UpdateEqualizer => {
@@ -266,7 +266,7 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
                     };
                     equalizer
                         .set_levels(&levels)
-                        .unwrap_or_else(|err| tracing::warn!("Could not apply equalizer: {}", err));
+                        .unwrap_or_else(|err| tracing::warn!("Could not apply equalizer: {:?}", err));
                 }
             }
             Action::UpdateMicrophoneVolume => {
@@ -274,7 +274,7 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
                     let _span = tracing::trace_span!("mic_volume").entered();
                     mic_volume
                         .set_level(headset.selected_profile().microphone_volume)
-                        .unwrap_or_else(|err| tracing::warn!("Could not apply microphone volume: {}", err));
+                        .unwrap_or_else(|err| tracing::warn!("Could not apply microphone volume: {:?}", err));
                 }
             }
             Action::UpdateVolumeLimit => {
@@ -282,7 +282,7 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
                     let _span = tracing::trace_span!("volume_limiter").entered();
                     volume_limiter
                         .set_enabled(headset.selected_profile().volume_limiter)
-                        .unwrap_or_else(|err| tracing::warn!("Could not apply volume limited: {}", err));
+                        .unwrap_or_else(|err| tracing::warn!("Could not apply volume limited: {:?}", err));
                 }
             }
             Action::UpdateInactiveTime => {
@@ -290,7 +290,7 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
                     let _span = tracing::trace_span!("inactive time").entered();
                     inactive_time
                         .set_inactive_time(headset.inactive_time)
-                        .unwrap_or_else(|err| tracing::warn!("Could not apply inactive time: {}", err));
+                        .unwrap_or_else(|err| tracing::warn!("Could not apply inactive time: {:?}", err));
                 }
             }
             Action::UpdateMicrophoneLight => {
@@ -298,7 +298,7 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
                     let _span = tracing::trace_span!("mic_light").entered();
                     mic_light
                         .set_light_strength(headset.mic_light)
-                        .unwrap_or_else(|err| tracing::warn!("Could not apply microphone light: {}", err));
+                        .unwrap_or_else(|err| tracing::warn!("Could not apply microphone light: {:?}", err));
                 }
             }
             Action::UpdateBluetoothCall => {
@@ -306,7 +306,7 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
                     let _span = tracing::trace_span!("bluetooth").entered();
                     bluetooth_config
                         .set_auto_enabled(headset.auto_enable_bluetooth)
-                        .unwrap_or_else(|err| tracing::warn!("Could not set bluetooth auto enabled: {}", err));
+                        .unwrap_or_else(|err| tracing::warn!("Could not set bluetooth auto enabled: {:?}", err));
                 }
             }
             Action::UpdateAutoBluetooth => {
@@ -314,7 +314,7 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
                     let _span = tracing::trace_span!("bluetooth").entered();
                     bluetooth_config
                         .set_call_action(headset.bluetooth_call)
-                        .unwrap_or_else(|err| tracing::warn!("Could not set call action: {}", err));
+                        .unwrap_or_else(|err| tracing::warn!("Could not set call action: {:?}", err));
                 }
             }
             _ => tracing::warn!("{:?} is not related to the device", action)

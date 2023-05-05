@@ -68,7 +68,7 @@ impl AudioSystem {
                             false => {
                                 manager
                                     .set_default_device(device)
-                                    .unwrap_or_else(|err| tracing::warn!("Could not change default audio device: {}", err));
+                                    .unwrap_or_else(|err| tracing::warn!("Could not change default audio device: {:?}", err));
                                 self.default_device = manager.get_default_device();
                             }
                         }
@@ -81,7 +81,7 @@ impl AudioSystem {
                         match (src, dst) {
                             (Some(src), Some(dst)) => {
                                 self.loopback = AudioLoopback::new(src, dst)
-                                    .map_err(|err| tracing::warn!("Could not start audio routing: {}", err))
+                                    .map_err(|err| tracing::warn!("Could not start audio routing: {:?}", err))
                                     .ok();
                             }
                             _ => tracing::warn!("Could not find both audio devices")

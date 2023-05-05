@@ -327,7 +327,7 @@ impl AudioLoopback {
                     .name("loopback audio router".to_string())
                     .spawn(move || {
                         com_initialized();
-                        let _handle = mark_audio_thread().map_err(|err| tracing::warn!("Could not mark as audio thread: {}", err));
+                        let _handle = mark_audio_thread().map_err(|err| tracing::warn!("Could not mark as audio thread: {:?}", err));
 
                         src_audio_client.Start().unwrap();
                         dst_audio_client.Start().unwrap();
