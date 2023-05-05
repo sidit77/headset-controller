@@ -1,11 +1,14 @@
 use std::time::{Duration, Instant};
 
-use color_eyre::eyre::{eyre};
-use hidapi::{HidDevice};
+use color_eyre::eyre::eyre;
+use hidapi::HidDevice;
 use tracing::instrument;
 
 use crate::config::CallAction;
-use crate::devices::{BatteryLevel, BluetoothConfig, ChatMix, Device, Equalizer, InactiveTime, Info, MicrophoneLight, MicrophoneVolume, SideTone, VolumeLimiter, DeviceResult as Result, CheckSupport, GenericHidDevice};
+use crate::devices::{
+    BatteryLevel, BluetoothConfig, ChatMix, CheckSupport, Device, DeviceResult as Result, Equalizer, GenericHidDevice, InactiveTime, Info,
+    MicrophoneLight, MicrophoneVolume, SideTone, VolumeLimiter
+};
 
 const STEELSERIES: u16 = 0x1038;
 
@@ -44,7 +47,7 @@ impl From<(HidDevice, Info)> for ArcticsNova7 {
             last_chat_mix_adjustment: None,
             connected: false,
             battery: BatteryLevel::Unknown,
-            chat_mix: Default::default(),
+            chat_mix: Default::default()
         }
     }
 }
@@ -76,7 +79,7 @@ impl Device for ArcticsNova7 {
         let mut report = [0u8; STATUS_BUF_SIZE];
         self.device.write(&[0x00, 0xb0])?;
         if self.device.read_timeout(&mut report, READ_TIMEOUT)? != STATUS_BUF_SIZE {
-            return Err(eyre!("Cannot read enough bytes").into())
+            return Err(eyre!("Cannot read enough bytes").into());
         }
 
         let prev_chat_mix = self.chat_mix;
@@ -190,7 +193,6 @@ impl MicrophoneVolume for ArcticsNova7 {
 }
 
 impl VolumeLimiter for ArcticsNova7 {
-
     #[instrument(skip(self))]
     fn set_enabled(&self, enabled: bool) -> Result<()> {
         tracing::debug!("Attempting to write new value to device!");
@@ -239,7 +241,6 @@ impl Equalizer for ArcticsNova7 {
 }
 
 impl BluetoothConfig for ArcticsNova7 {
-
     #[instrument(skip(self))]
     fn set_call_action(&self, action: CallAction) -> Result<()> {
         tracing::debug!("Attempting to write new value to device!");
@@ -266,7 +267,6 @@ impl MicrophoneLight for ArcticsNova7 {
 }
 
 impl InactiveTime for ArcticsNova7 {
-
     #[instrument(skip(self))]
     fn set_inactive_time(&self, minutes: u8) -> Result<()> {
         tracing::debug!("Attempting to write new value to device!");

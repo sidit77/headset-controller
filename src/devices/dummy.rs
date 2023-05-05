@@ -1,18 +1,17 @@
 use std::time::Duration;
+
 use hidapi::HidApi;
 use once_cell::sync::Lazy;
 use tracing::instrument;
+
 use crate::config::CallAction;
-use crate::devices::{BatteryLevel, BluetoothConfig, BoxedDevice, ChatMix, Device, DeviceResult, Equalizer, InactiveTime, Info, MicrophoneLight, MicrophoneVolume, SideTone, SupportedDevice, VolumeLimiter};
+use crate::devices::{
+    BatteryLevel, BluetoothConfig, BoxedDevice, ChatMix, Device, DeviceResult, Equalizer, InactiveTime, Info, MicrophoneLight, MicrophoneVolume,
+    SideTone, SupportedDevice, VolumeLimiter
+};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct DummyDevice;
-
-impl DummyDevice {
-    pub fn new() -> Box<dyn SupportedDevice> {
-        Box::new(DummyDevice)
-    }
-}
 
 impl SupportedDevice for DummyDevice {
     fn get_info(&self) -> &Info {
@@ -129,9 +128,7 @@ impl Equalizer for DummyDevice {
     }
 
     fn presets(&self) -> &[(&str, &[u8])] {
-        &[
-            ("Default", &[8; 13])
-        ]
+        &[("Default", &[8; 13])]
     }
 
     #[instrument(skip(self))]
@@ -142,7 +139,6 @@ impl Equalizer for DummyDevice {
 }
 
 impl VolumeLimiter for DummyDevice {
-
     #[instrument(skip(self))]
     fn set_enabled(&self, enabled: bool) -> DeviceResult<()> {
         tracing::info!("Updated volume limiter");
@@ -151,7 +147,6 @@ impl VolumeLimiter for DummyDevice {
 }
 
 impl BluetoothConfig for DummyDevice {
-
     #[instrument(skip(self))]
     fn set_call_action(&self, action: CallAction) -> DeviceResult<()> {
         tracing::info!("Updated call action");
@@ -166,7 +161,6 @@ impl BluetoothConfig for DummyDevice {
 }
 
 impl InactiveTime for DummyDevice {
-
     #[instrument(skip(self))]
     fn set_inactive_time(&self, minutes: u8) -> DeviceResult<()> {
         tracing::info!("Updated inactive time");

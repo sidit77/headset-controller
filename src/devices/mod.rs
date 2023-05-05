@@ -92,8 +92,7 @@ impl Display for Info {
     }
 }
 
-pub trait Device{
-
+pub trait Device {
     fn get_info(&self) -> &Info;
     fn is_connected(&self) -> bool;
     fn poll(&mut self) -> DeviceResult<Duration>;
@@ -144,7 +143,6 @@ pub struct GenericHidDevice<T> {
 }
 
 impl<T> GenericHidDevice<T> {
-
     pub fn new(info: &DeviceInfo, fallback_manufacturer: &str, fallback_product: &str) -> Self {
         let manufacturer = info
             .manufacturer_string()
@@ -157,15 +155,10 @@ impl<T> GenericHidDevice<T> {
         let name = format!("{} {}", manufacturer, product);
         Self {
             device_info: info.clone(),
-            info: Info {
-                manufacturer,
-                product,
-                name,
-            },
-            _marker: Default::default(),
+            info: Info { manufacturer, product, name },
+            _marker: Default::default()
         }
     }
-
 }
 
 impl<T: From<(HidDevice, Info)> + Device + 'static> SupportedDevice for GenericHidDevice<T> {
@@ -181,27 +174,31 @@ impl<T: From<(HidDevice, Info)> + Device + 'static> SupportedDevice for GenericH
 
 const SUPPORTED_DEVICES: &[CheckSupport] = &[ArcticsNova7::SUPPORT];
 
+fn get_dummy_device() -> Option<Box<dyn SupportedDevice>> {
+    match cfg!(debug_assertions) {
+        true => Some(Box::new(DummyDevice)),
+        false => None
+    }
+}
+
 pub struct DeviceManager(HidApi);
 
 impl DeviceManager {
-
     pub fn new() -> DeviceResult<Self> {
         Ok(Self(HidApi::new()?))
     }
 
     pub fn supported_devices(&self) -> Vec<Box<dyn SupportedDevice>> {
-        self.0.device_list()
-            .flat_map(|info| SUPPORTED_DEVICES
-                .iter()
-                .filter_map(|check| check(info)))
-            .chain(Some(DummyDevice::new()))
+        self.0
+            .device_list()
+            .flat_map(|info| SUPPORTED_DEVICES.iter().filter_map(|check| check(info)))
+            .chain(get_dummy_device())
             .collect::<Vec<_>>()
     }
 
     pub fn open(&self, supported: &dyn SupportedDevice) -> DeviceResult<BoxedDevice> {
         supported.open(&self.0)
     }
-
 }
 
 pub type DeviceResult<T> = Result<T, DeviceError>;

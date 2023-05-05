@@ -52,10 +52,7 @@ fn main() -> Result<()> {
         tracing::info!("Found: {}", dev.get_info().name);
     }
     let mut device = {
-        let device = devices
-            .last()
-            .unwrap()
-            .as_ref();
+        let device = devices.last().unwrap().as_ref();
         device_manager.open(device)?
     };
 
