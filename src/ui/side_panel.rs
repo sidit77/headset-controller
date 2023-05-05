@@ -55,7 +55,7 @@ pub fn side_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config, d
             headset
                 .profiles
                 .push(Profile::new(String::from("New Profile")));
-            debouncer.submit(Action::SaveConfig);
+            debouncer.submit_all([Action::SaveConfig, Action::UpdateTray]);
         }
     });
     ScrollArea::vertical()
@@ -71,7 +71,9 @@ pub fn side_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config, d
                     })
                     .inner;
                 let resp = resp.context_menu(|ui| {
-                    ui.text_edit_singleline(&mut profile.name);
+                    if ui.text_edit_singleline(&mut profile.name).changed() {
+                        debouncer.submit_all([Action::SaveConfig, Action::UpdateTray]);
+                    }
                     ui.add_space(4.0);
                     if ui
                         .add_enabled(profile_count > 1, Button::new("Delete"))
@@ -87,14 +89,14 @@ pub fn side_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config, d
             }
             if let Some(i) = deleted {
                 headset.profiles.remove(i);
-                debouncer.submit(Action::SaveConfig);
+                debouncer.submit_all([Action::SaveConfig, Action::UpdateTray]);
                 if i as u32 <= headset.selected_profile_index && headset.selected_profile_index > 0 {
                     headset.selected_profile_index -= 1;
                 }
             }
             if headset.selected_profile_index != old_profile_index {
                 submit_profile_change(debouncer);
-                debouncer.submit(Action::SaveConfig);
+                debouncer.submit_all([Action::SaveConfig, Action::UpdateTray]);
             }
         });
 }

@@ -19,7 +19,8 @@ pub enum Action {
     UpdateBluetoothCall,
     UpdateAutoBluetooth,
 
-    UpdateSystemAudio
+    UpdateSystemAudio,
+    UpdateTray
 }
 
 impl Action {

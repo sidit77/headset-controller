@@ -37,8 +37,6 @@ impl Drop for ComWrapper {
     fn drop(&mut self) {
         unsafe {
             CoUninitialize();
-            let thread = std::thread::current();
-            tracing::trace!("Uninitialized COM on thread \"{}\"", thread.name().unwrap_or(""));
         }
     }
 }

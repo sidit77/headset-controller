@@ -8,6 +8,7 @@ mod notification;
 mod renderer;
 mod ui;
 mod util;
+mod tray;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -17,9 +18,7 @@ use egui::Visuals;
 use glow::Context;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget};
-use tao::menu::{ContextMenu, MenuItemAttributes};
 use tao::platform::run_return::EventLoopExtRunReturn;
-use tao::system_tray::SystemTrayBuilder;
 use tracing::instrument;
 use tracing_error::ErrorLayer;
 use tracing_subscriber::filter::{LevelFilter, Targets};
@@ -33,6 +32,7 @@ use crate::debouncer::{Action, Debouncer};
 use crate::devices::{BatteryLevel, Device, DeviceManager};
 use crate::renderer::egui_glow_tao::EguiGlow;
 use crate::renderer::{create_display, GlutinWindowContext};
+use crate::tray::{AppTray, TrayEvent};
 
 fn main() -> Result<()> {
     color_eyre::install()?;
@@ -41,6 +41,8 @@ fn main() -> Result<()> {
         .with(layer().without_time())
         .with(ErrorLayer::default())
         .init();
+
+    let span = tracing::trace_span!("init").entered();
 
     let mut config = Config::load()?;
 
@@ -58,13 +60,9 @@ fn main() -> Result<()> {
 
     let mut event_loop = EventLoop::new();
 
-    let mut tray_menu = ContextMenu::new();
-    let open_item = tray_menu.add_item(MenuItemAttributes::new("Open"));
-    let quit_item = tray_menu.add_item(MenuItemAttributes::new("Quit"));
-    let mut tray = SystemTrayBuilder::new(ui::WINDOW_ICON.clone(), Some(tray_menu))
-        .with_tooltip("Not Connected")
-        .build(&event_loop)
-        .expect("Can not build system tray");
+    let mut tray = AppTray::new(&event_loop);
+    update_tray(&mut tray, &mut config, &device.get_info().name);
+
 
     let mut window: Option<EguiWindow> = match std::env::args().any(|arg| arg.eq("--quiet")) {
         true => None,
@@ -74,6 +72,8 @@ fn main() -> Result<()> {
     let mut next_device_poll = Instant::now();
     let mut debouncer = Debouncer::new();
     debouncer.submit(Action::UpdateSystemAudio);
+
+    span.exit();
     event_loop.run_return(move |event, event_loop, control_flow| {
         if window
             .as_mut()
@@ -92,8 +92,8 @@ fn main() -> Result<()> {
         }
 
         match event {
-            Event::MenuEvent { menu_id, .. } => {
-                if menu_id == open_item.clone().id() {
+            Event::MenuEvent { menu_id, .. } => match tray.handle_event(menu_id) {
+                Some(TrayEvent::Open) => {
                     audio_system.refresh_devices();
                     match &mut window {
                         None => window = Some(EguiWindow::new(event_loop)),
@@ -101,10 +101,11 @@ fn main() -> Result<()> {
                             window.gl_window.window().set_focus();
                         }
                     }
-                }
-                if menu_id == quit_item.clone().id() {
+                },
+                Some(TrayEvent::Quit) => {
                     *control_flow = ControlFlow::Exit;
-                }
+                },
+                _ => {}
             }
             Event::NewEvents(_) | Event::LoopDestroyed => {
                 for action in &mut debouncer {
@@ -119,7 +120,8 @@ fn main() -> Result<()> {
                             config
                                 .save()
                                 .unwrap_or_else(|err| tracing::warn!("Could not save config: {}", err));
-                        }
+                        },
+                        Action::UpdateTray => update_tray(&mut tray, &mut config, &device.get_info().name),
                         action => {
                             let headset = config.get_headset(&device.get_info().name);
                             apply_config_to_device(action, device.as_ref(), headset)
@@ -128,6 +130,7 @@ fn main() -> Result<()> {
                 }
 
                 if next_device_poll <= Instant::now() {
+                    let _span = tracing::trace_span!("device_poll").entered();
                     let (last_connected, last_battery) = (device.is_connected(), device.get_battery_status());
                     next_device_poll = Instant::now() + device.poll().unwrap();
 
@@ -282,9 +285,19 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
                         .unwrap_or_else(|err| tracing::warn!("Could not set call action: {}", err));
                 }
             }
-            Action::SaveConfig | Action::UpdateSystemAudio => tracing::warn!("{:?} is not related to the device", action)
+            _ => tracing::warn!("{:?} is not related to the device", action)
         }
     }
+}
+
+#[instrument(skip_all)]
+pub fn update_tray(tray: &mut AppTray, config: &mut Config, device_name: &str) {
+    let headset = config.get_headset(device_name);
+    let names = headset
+        .profiles
+        .iter()
+        .map(|p| p.name.as_str());
+    tray.build_menu(names);
 }
 
 struct EguiWindow {
