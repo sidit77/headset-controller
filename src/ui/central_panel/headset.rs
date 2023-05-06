@@ -51,15 +51,18 @@ pub fn headset_section(
         ui.add_space(10.0);
     }
 
-    let switch = &mut headset.os_audio;
-    if audio_output_switch_selector(ui, switch, audio_system) {
-        debouncer.submit(Action::SaveConfig);
-        if auto_update {
-            debouncer.submit(Action::UpdateSystemAudio);
-            debouncer.force(Action::UpdateSystemAudio);
+    if audio_system.is_running() {
+        let switch = &mut headset.os_audio;
+        if audio_output_switch_selector(ui, switch, audio_system) {
+            debouncer.submit(Action::SaveConfig);
+            if auto_update {
+                debouncer.submit(Action::UpdateSystemAudio);
+                debouncer.force(Action::UpdateSystemAudio);
+            }
         }
+        ui.add_space(10.0);
     }
-    ui.add_space(10.0);
+
 }
 
 fn get_name(switch: &OsAudio) -> &str {

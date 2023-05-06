@@ -1,7 +1,6 @@
 pub mod egui_glow_tao;
 
 use std::num::NonZeroU32;
-use egui::NumExt;
 use glutin::config::ConfigTemplateBuilder;
 use glutin::context::{ContextApi, ContextAttributesBuilder, PossiblyCurrentContext};
 use glutin::display::{Display, GetGlDisplay};

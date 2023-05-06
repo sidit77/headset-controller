@@ -1,5 +1,3 @@
-use color_eyre::Result;
-
 #[cfg(target_os = "windows")]
 #[path = "platforms/windows.rs"]
 mod platform;
@@ -13,7 +11,7 @@ pub use platform::{AudioDevice, AudioLoopback, AudioManager};
 use crate::config::OsAudio;
 
 pub struct AudioSystem {
-    manager: Result<AudioManager>,
+    manager: Option<AudioManager>,
     devices: Vec<AudioDevice>,
     default_device: Option<AudioDevice>,
     loopback: Option<AudioLoopback>
@@ -21,7 +19,9 @@ pub struct AudioSystem {
 
 impl AudioSystem {
     pub fn new() -> Self {
-        let manager = AudioManager::new();
+        let manager = AudioManager::new()
+            .map_err(|err| tracing::warn!("Failed to initialize the audio manager: {}", err))
+            .ok();
         let mut result = Self {
             manager,
             devices: Vec::new(),
@@ -32,12 +32,12 @@ impl AudioSystem {
         result
     }
 
-    //pub fn is_running(&self) -> bool {
-    //    self.manager.is_ok()
-    //}
+    pub fn is_running(&self) -> bool {
+        self.manager.is_some()
+    }
 
     pub fn refresh_devices(&mut self) {
-        if let Ok(manager) = &self.manager {
+        if let Some(manager) = &self.manager {
             self.devices.clear();
             self.devices.extend(manager.devices());
             self.default_device = manager.get_default_device();
@@ -55,7 +55,7 @@ impl AudioSystem {
     pub fn apply(&mut self, audio_config: &OsAudio, connected: bool) {
         self.refresh_devices();
         self.loopback = None;
-        if let Ok(manager) = &self.manager {
+        if let Some(manager) = &self.manager {
             match audio_config {
                 OsAudio::Disabled => {}
                 OsAudio::ChangeDefault { on_connect, on_disconnect } => {
