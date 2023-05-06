@@ -62,7 +62,6 @@ pub fn headset_section(
         }
         ui.add_space(10.0);
     }
-
 }
 
 fn get_name(switch: &OsAudio) -> &str {

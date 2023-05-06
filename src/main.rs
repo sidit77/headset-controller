@@ -27,7 +27,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 use crate::audio::AudioSystem;
-use crate::config::{Config, EqualizerConfig, HeadsetConfig, log_file};
+use crate::config::{log_file, Config, EqualizerConfig, HeadsetConfig};
 use crate::debouncer::{Action, Debouncer};
 use crate::devices::{BatteryLevel, BoxedDevice, Device, DeviceManager, SupportedDevice};
 use crate::renderer::egui_glow_tao::EguiGlow;
@@ -39,11 +39,8 @@ fn main() -> Result<()> {
     let logfile = Mutex::new(log_file());
     tracing_subscriber::registry()
         .with(Targets::new().with_default(LevelFilter::TRACE))
-        .with(layer()
-            .without_time())
-        .with(layer()
-            .with_ansi(false)
-            .with_writer(logfile))
+        .with(layer().without_time())
+        .with(layer().with_ansi(false).with_writer(logfile))
         .with(ErrorLayer::default())
         .init();
 
@@ -166,10 +163,11 @@ fn main() -> Result<()> {
                     if next_device_poll <= Instant::now() {
                         let _span = tracing::info_span!("device_poll").entered();
                         let (last_connected, last_battery) = (device.is_connected(), device.get_battery_status());
-                        next_device_poll = Instant::now() + device
-                            .poll()
-                            .map_err(|err| tracing::warn!("Failed to poll device: {:?}", err))
-                            .unwrap_or(Duration::from_secs(10));
+                        next_device_poll = Instant::now()
+                            + device
+                                .poll()
+                                .map_err(|err| tracing::warn!("Failed to poll device: {:?}", err))
+                                .unwrap_or(Duration::from_secs(10));
 
                         if last_connected != device.is_connected() {
                             let mut msg = match device.is_connected() {
@@ -399,7 +397,9 @@ impl EguiWindow {
                 self.gl.clear(glow::COLOR_BUFFER_BIT);
             }
             self.egui_glow.paint(self.gl_window.window());
-            self.gl_window.swap_buffers().expect("Failed to swap buffers");
+            self.gl_window
+                .swap_buffers()
+                .expect("Failed to swap buffers");
         }
     }
 

@@ -79,7 +79,7 @@ impl Device for ArcticsNova7 {
         let mut report = [0u8; STATUS_BUF_SIZE];
         self.device.write(&[0x00, 0xb0])?;
         if self.device.read_timeout(&mut report, READ_TIMEOUT)? != STATUS_BUF_SIZE {
-            return Err(eyre!("Cannot read enough bytes").into());
+            return Err(eyre!("Cannot read enough bytes"));
         }
 
         let prev_chat_mix = self.chat_mix;

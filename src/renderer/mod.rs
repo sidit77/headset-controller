@@ -1,12 +1,13 @@
 pub mod egui_glow_tao;
 
 use std::num::NonZeroU32;
+
 use glutin::config::ConfigTemplateBuilder;
 use glutin::context::{ContextApi, ContextAttributesBuilder, PossiblyCurrentContext};
 use glutin::display::{Display, GetGlDisplay};
 use glutin::prelude::*;
 use glutin::surface::{Surface, SwapInterval, WindowSurface};
-use glutin_tao::{finalize_window, DisplayBuilder, ApiPreference, GlWindow};
+use glutin_tao::{finalize_window, ApiPreference, DisplayBuilder, GlWindow};
 use raw_window_handle::HasRawWindowHandle;
 use tao::dpi::{LogicalSize, PhysicalSize};
 use tao::event_loop::EventLoopWindowTarget;
@@ -32,7 +33,7 @@ impl GlutinWindowContext {
             .with_title("Headset Controller");
 
         #[cfg(windows)]
-        let winit_window_builder = tao::platform::windows::WindowBuilderExtWindows::with_drag_and_drop(winit_window_builder, false);
+        let window_builder = tao::platform::windows::WindowBuilderExtWindows::with_drag_and_drop(window_builder, false);
 
         let template = ConfigTemplateBuilder::new()
             .with_depth_size(0)
@@ -45,11 +46,13 @@ impl GlutinWindowContext {
             .with_window_builder(Some(window_builder.clone()));
 
         let (mut window, gl_config) = display_builder
-            .build(&event_loop, template, |configs| {
-                configs.reduce(|accum, config| match config.num_samples() > accum.num_samples() {
-                    true => config,
-                    false => accum
-                }).expect("failed to find a matching configuration for creating glutin config")
+            .build(event_loop, template, |configs| {
+                configs
+                    .reduce(|accum, config| match config.num_samples() > accum.num_samples() {
+                        true => config,
+                        false => accum
+                    })
+                    .expect("failed to find a matching configuration for creating glutin config")
             })
             .expect("failed to create gl_config");
 
@@ -58,27 +61,28 @@ impl GlutinWindowContext {
         let raw_window_handle = window.as_ref().map(|window| window.raw_window_handle());
         let gl_display = gl_config.display();
 
-        let context_attributes = ContextAttributesBuilder::new()
-            .build(raw_window_handle);
+        let context_attributes = ContextAttributesBuilder::new().build(raw_window_handle);
 
         let fallback_context_attributes = ContextAttributesBuilder::new()
             .with_context_api(ContextApi::Gles(None))
             .build(raw_window_handle);
 
         let mut not_current_gl_context = Some(unsafe {
-            gl_display.create_context(&gl_config, &context_attributes).unwrap_or_else(|_| {
-                gl_display.create_context(&gl_config, &fallback_context_attributes).expect("failed to create context")
-            })
+            gl_display
+                .create_context(&gl_config, &context_attributes)
+                .unwrap_or_else(|_| {
+                    gl_display
+                        .create_context(&gl_config, &fallback_context_attributes)
+                        .expect("failed to create context")
+                })
         });
 
         let window = window.take().unwrap_or_else(|| {
             println!("window doesn't exist yet. creating one now with finalize_window");
-            finalize_window(&event_loop, window_builder, &gl_config)
-                .expect("failed to finalize glutin window")
+            finalize_window(event_loop, window_builder, &gl_config).expect("failed to finalize glutin window")
         });
 
-        let attrs = window
-            .build_surface_attributes(<_>::default());
+        let attrs = window.build_surface_attributes(<_>::default());
         println!("creating surface with attributes: {:?}", &attrs);
         let gl_surface = unsafe {
             gl_config
@@ -92,7 +96,6 @@ impl GlutinWindowContext {
             .unwrap()
             .make_current(&gl_surface)
             .unwrap();
-
 
         gl_surface
             .set_swap_interval(&gl_context, SwapInterval::Wait(NonZeroU32::new(1).unwrap()))

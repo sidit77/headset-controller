@@ -99,22 +99,15 @@ impl Default for Config {
     }
 }
 
-static BASE_PATH: Lazy<BaseDirs> = Lazy::new(|| {
-    BaseDirs::new().expect("can not get directories")
-});
-static CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
-    BASE_PATH.config_dir().join("HeadsetController.ron")
-});
-static LOG_PATH: Lazy<PathBuf> = Lazy::new(|| {
-    BASE_PATH.config_dir().join("HeadsetController.log")
-});
+static BASE_PATH: Lazy<BaseDirs> = Lazy::new(|| BaseDirs::new().expect("can not get directories"));
+static CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| BASE_PATH.config_dir().join("HeadsetController.ron"));
+static LOG_PATH: Lazy<PathBuf> = Lazy::new(|| BASE_PATH.config_dir().join("HeadsetController.log"));
 
 pub fn log_file() -> BufWriter<File> {
     BufWriter::new(File::create(LOG_PATH.as_path()).expect("Can not open file"))
 }
 
 impl Config {
-
     pub fn path() -> &'static Path {
         CONFIG_PATH.as_path()
     }

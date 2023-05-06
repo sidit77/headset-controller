@@ -16,4 +16,12 @@ A (soon: cross-platform) app to configure wireless headphones
 - [x] better system tray
 - [ ] improve look of the equalizer
 - [ ] more tooltips (language file)
-- [ ] linux support
+- [x] linux support
+
+
+
+# Linux
+
+```bash
+sudo apt install libgtk-3-dev libayatana-appindicator3-dev libudev-dev
+```

@@ -4,12 +4,11 @@ use color_eyre::Result;
 #[derive(Debug, Clone)]
 pub struct AudioManager;
 impl AudioManager {
-
     pub fn new() -> Result<Self> {
         bail!("Not supported on this platform!")
     }
 
-    pub fn devices(&self) -> impl Iterator<Item=AudioDevice> {
+    pub fn devices(&self) -> impl Iterator<Item = AudioDevice> {
         std::iter::empty::<AudioDevice>()
     }
 
@@ -20,18 +19,14 @@ impl AudioManager {
     pub fn set_default_device(&self, _: &AudioDevice) -> Result<()> {
         bail!("not supported!");
     }
-
-
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct AudioDevice;
 impl AudioDevice {
-
     pub fn name(&self) -> &str {
         unimplemented!()
     }
-
 }
 
 pub struct AudioLoopback;
