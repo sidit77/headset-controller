@@ -1434,6 +1434,7 @@ dependencies = [
 [[package]]
 name = "glutin-tao"
 version = "0.3.0"
+source = "git+https://github.com/sidit77/glutin-tao.git#ceffeb34b01fdfe72489346c62dfa6d3caea53bb"
 dependencies = [
  "cfg_aliases",
  "glutin",

@@ -11,7 +11,6 @@ codegen-units=1
 [workspace]
 members = [
     ".",
-    "./lib/glutin-tao",
     "./lib/egui-tao"
 ]
 
@@ -34,7 +33,7 @@ glow = "0.12"
 egui_glow = { version = "0.21" }
 raw-window-handle = "0.5"
 tao = { version = "0.19", features = ["tray"] }
-glutin-tao = {path = "./lib/glutin-tao"}
+glutin-tao = {git = "https://github.com/sidit77/glutin-tao.git" }
 egui-tao = {path = "./lib/egui-tao"}
 
 [target."cfg(not(target_os = \"windows\"))".dependencies]
