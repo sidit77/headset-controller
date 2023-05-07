@@ -29,7 +29,6 @@ const HEADSET_CHARGING: u8 = 0x01;
 const BATTERY_MAX: u8 = 0x04;
 const BATTERY_MIN: u8 = 0x00;
 
-#[derive(Debug)]
 pub struct ArcticsNova7 {
     device: HidDevice,
     name: Info,

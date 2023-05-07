@@ -1,7 +1,6 @@
 use egui_glow::ShaderVersion;
 use egui_tao::EventResponse;
 use tao::event::WindowEvent;
-use tao::event_loop::EventLoopWindowTarget;
 use tao::window::Window;
 
 /// Use [`egui`] from a [`glow`] app based on [`winit`].
@@ -16,7 +15,7 @@ pub struct EguiGlow {
 
 impl EguiGlow {
     /// For automatic shader version detection set `shader_version` to `None`.
-    pub fn new<E>(event_loop: &EventLoopWindowTarget<E>, gl: std::sync::Arc<glow::Context>, shader_version: Option<ShaderVersion>) -> Self {
+    pub fn new(gl: std::sync::Arc<glow::Context>, shader_version: Option<ShaderVersion>) -> Self {
         let painter = egui_glow::Painter::new(gl, "", shader_version)
             .map_err(|error| {
                 tracing::error!("error occurred in initializing painter:\n{}", error);
@@ -25,7 +24,7 @@ impl EguiGlow {
 
         Self {
             egui_ctx: Default::default(),
-            egui_winit: egui_tao::State::new(event_loop),
+            egui_winit: egui_tao::State::new(),
             painter,
             shapes: Default::default(),
             textures_delta: Default::default()

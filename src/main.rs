@@ -373,7 +373,7 @@ impl EguiWindow {
     fn new(event_loop: &EventLoopWindowTarget<()>) -> Self {
         let (gl_window, gl) = create_display(event_loop);
         let gl = Arc::new(gl);
-        let egui_glow = EguiGlow::new(event_loop, gl.clone(), None);
+        let egui_glow = EguiGlow::new(gl.clone(), None);
         egui_glow.egui_ctx.set_visuals(Visuals::light());
         gl_window.window().set_visible(true);
 
