@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::BufWriter;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use color_eyre::Result;
@@ -8,6 +8,8 @@ use directories_next::BaseDirs;
 use once_cell::sync::Lazy;
 use ron::ser::{to_string_pretty, PrettyConfig};
 use serde::{Deserialize, Serialize};
+
+use crate::util::EscapeStripper;
 
 #[derive(Default, Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum OsAudio {
@@ -103,8 +105,9 @@ static BASE_PATH: Lazy<BaseDirs> = Lazy::new(|| BaseDirs::new().expect("can not 
 static CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| BASE_PATH.config_dir().join("HeadsetController.ron"));
 static LOG_PATH: Lazy<PathBuf> = Lazy::new(|| BASE_PATH.config_dir().join("HeadsetController.log"));
 
-pub fn log_file() -> BufWriter<File> {
-    BufWriter::new(File::create(LOG_PATH.as_path()).expect("Can not open file"))
+pub fn log_file() -> impl Write {
+    let file = File::create(LOG_PATH.as_path()).expect("Can not open file");
+    EscapeStripper::new(file)
 }
 
 impl Config {

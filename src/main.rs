@@ -35,10 +35,10 @@ fn main() -> Result<()> {
     color_eyre::install()?;
     let logfile = Mutex::new(log_file());
     tracing_subscriber::registry()
+        .with(ErrorLayer::default())
         .with(Targets::new().with_default(LevelFilter::TRACE))
         .with(layer().without_time())
         .with(layer().with_ansi(false).with_writer(logfile))
-        .with(ErrorLayer::default())
         .init();
 
     let span = tracing::info_span!("init").entered();
