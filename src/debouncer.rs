@@ -21,6 +21,7 @@ pub enum Action {
 
     UpdateSystemAudio,
     UpdateTray,
+    UpdateTrayTooltip,
     SwitchDevice
 }
 

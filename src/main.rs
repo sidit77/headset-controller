@@ -53,7 +53,6 @@ fn main() -> Result<()> {
     let mut event_loop = EventLoop::new();
 
     let mut tray = AppTray::new(&event_loop);
-    update_tray(&mut tray, &mut config, device.as_ref().map(|d| d.name()));
 
     let mut window: Option<EguiWindow> = match std::env::args().any(|arg| arg.eq("--quiet")) {
         true => None,
@@ -62,7 +61,7 @@ fn main() -> Result<()> {
 
     let mut next_device_poll = Instant::now();
     let mut debouncer = Debouncer::new();
-    debouncer.submit(Action::UpdateSystemAudio);
+    debouncer.submit_all([Action::UpdateSystemAudio, Action::UpdateTrayTooltip, Action::UpdateTray]);
 
     span.exit();
     event_loop.run_return(move |event, event_loop, control_flow| {
@@ -131,7 +130,7 @@ fn main() -> Result<()> {
                                 device = dev;
                                 devices = list;
                                 submit_full_change(&mut debouncer);
-                                debouncer.submit(Action::UpdateTray);
+                                debouncer.submit_all([Action::UpdateTray, Action::UpdateTrayTooltip]);
                             } else {
                                 tracing::debug!("Preferred device is already active")
                             }
@@ -148,6 +147,7 @@ fn main() -> Result<()> {
                                 .unwrap_or_else(|err| tracing::warn!("Could not save config: {:?}", err));
                         }
                         Action::UpdateTray => update_tray(&mut tray, &mut config, device.as_ref().map(|d| d.name())),
+                        Action::UpdateTrayTooltip => update_tray_tooltip(&mut tray, &device),
                         action => {
                             if let Some(device) = &device {
                                 let headset = config.get_headset(device.name());
@@ -188,11 +188,7 @@ fn main() -> Result<()> {
                             debouncer.force(Action::UpdateSystemAudio);
                         }
                         if last_battery != device.get_battery_status() {
-                            tray.set_tooltip(&match device.get_battery_status() {
-                                Some(BatteryLevel::Charging) => format!("{}\nBattery: Charging", device.get_info()),
-                                Some(BatteryLevel::Level(level)) => format!("{}\nBattery: {}%", device.get_info(), level),
-                                _ => format!("{}\nDisconnected", device.get_info())
-                            });
+                            debouncer.submit(Action::UpdateTrayTooltip);
                         }
                     }
                 }
@@ -328,7 +324,9 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
 #[instrument(skip_all)]
 pub fn update_tray(tray: &mut AppTray, config: &mut Config, device_name: Option<&str>) {
     match device_name {
-        None => tray.build_menu(0, |_| ("", false)),
+        None => {
+            tray.build_menu(0, |_| ("", false));
+        },
         Some(device_name) => {
             let headset = config.get_headset(device_name);
             let selected = headset.selected_profile_index as usize;
@@ -336,6 +334,28 @@ pub fn update_tray(tray: &mut AppTray, config: &mut Config, device_name: Option<
             tray.build_menu(profiles.len(), |id| (profiles[id].name.as_str(), id == selected));
         }
     }
+}
+
+#[instrument(skip_all)]
+pub fn update_tray_tooltip(tray: &mut AppTray, device: &Option<BoxedDevice>) {
+    match device {
+        None => {
+            tray.set_tooltip("No Device");
+        },
+        Some(device) => {
+            let name = device.name().to_string();
+            let tooltip = match device.is_connected() {
+                true => match device.get_battery_status() {
+                    Some(BatteryLevel::Charging) => format!("{name}\nBattery: Charging"),
+                    Some(BatteryLevel::Level(level)) => format!("{name}\nBattery: {level}%"),
+                    _ => format!("{name}\nConnected")
+                }
+                false => format!("{name}\nDisconnected")
+            };
+            tray.set_tooltip(&tooltip);
+        }
+    }
+    tracing::trace!("Updated tooltip");
 }
 
 #[instrument(skip_all)]
