@@ -10,14 +10,12 @@ mod tray;
 mod ui;
 mod util;
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Mutex};
 use std::time::{Duration, Instant};
 
 use color_eyre::Result;
-use egui::Visuals;
-use glow::Context;
-use tao::event::{Event, WindowEvent};
-use tao::event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget};
+use tao::event::{Event};
+use tao::event_loop::{ControlFlow, EventLoop};
 use tao::platform::run_return::EventLoopExtRunReturn;
 use tracing::instrument;
 use tracing_error::ErrorLayer;
@@ -30,8 +28,7 @@ use crate::audio::AudioSystem;
 use crate::config::{log_file, Config, EqualizerConfig, HeadsetConfig};
 use crate::debouncer::{Action, Debouncer};
 use crate::devices::{BatteryLevel, BoxedDevice, Device, DeviceManager, SupportedDevice};
-use crate::renderer::egui_glow_tao::EguiGlow;
-use crate::renderer::{create_display, GlutinWindowContext};
+use crate::renderer::EguiWindow;
 use crate::tray::{AppTray, TrayEvent};
 
 fn main() -> Result<()> {
@@ -95,7 +92,7 @@ fn main() -> Result<()> {
                         match &mut window {
                             None => window = Some(EguiWindow::new(event_loop)),
                             Some(window) => {
-                                window.gl_window.window().set_focus();
+                                window.focus();
                             }
                         }
                     }
@@ -203,7 +200,7 @@ fn main() -> Result<()> {
             _ => ()
         }
         if !matches!(*control_flow, ControlFlow::ExitWithCode(_)) {
-            let next_window_update = window.as_ref().and_then(|w| w.next_repaint);
+            let next_window_update = window.as_ref().and_then(|w| w.next_repaint());
             let next_update = [device.as_ref().map(|_| next_device_poll), next_window_update, debouncer.next_action()]
                 .into_iter()
                 .flatten()
@@ -362,85 +359,4 @@ fn get_preferred_device(device_manager: &DeviceManager, config: &Config) -> (Vec
     (devices, device)
 }
 
-struct EguiWindow {
-    gl_window: GlutinWindowContext,
-    gl: Arc<Context>,
-    egui_glow: EguiGlow,
-    next_repaint: Option<Instant>
-}
 
-impl EguiWindow {
-    fn new(event_loop: &EventLoopWindowTarget<()>) -> Self {
-        let (gl_window, gl) = create_display(event_loop);
-        let gl = Arc::new(gl);
-        let egui_glow = EguiGlow::new(gl.clone(), None);
-        egui_glow.egui_ctx.set_visuals(Visuals::light());
-        gl_window.window().set_visible(true);
-
-        Self {
-            gl_window,
-            gl,
-            egui_glow,
-            next_repaint: Some(Instant::now())
-        }
-    }
-
-    fn redraw(&mut self, gui: impl FnMut(&egui::Context)) {
-        let repaint_after = self.egui_glow.run(self.gl_window.window(), gui);
-        self.next_repaint = Instant::now().checked_add(repaint_after);
-        {
-            let clear_color = [0.1, 0.1, 0.1];
-            unsafe {
-                use glow::HasContext as _;
-                self.gl
-                    .clear_color(clear_color[0], clear_color[1], clear_color[2], 1.0);
-                self.gl.clear(glow::COLOR_BUFFER_BIT);
-            }
-            self.egui_glow.paint(self.gl_window.window());
-            self.gl_window
-                .swap_buffers()
-                .expect("Failed to swap buffers");
-        }
-    }
-
-    fn handle_events(&mut self, event: &Event<()>, gui: impl FnMut(&egui::Context)) -> bool {
-        if self
-            .next_repaint
-            .map(|t| Instant::now().checked_duration_since(t))
-            .is_some()
-        {
-            self.gl_window.window().request_redraw();
-        }
-        match event {
-            Event::RedrawEventsCleared if cfg!(windows) => self.redraw(gui),
-            Event::RedrawRequested(_) if !cfg!(windows) => self.redraw(gui),
-            Event::WindowEvent { event, .. } => {
-                match &event {
-                    WindowEvent::CloseRequested | WindowEvent::Destroyed => {
-                        return true;
-                    }
-                    WindowEvent::Resized(physical_size) => {
-                        self.gl_window.resize(*physical_size);
-                    }
-                    WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                        self.gl_window.resize(**new_inner_size);
-                    }
-                    _ => {}
-                }
-
-                let event_response = self.egui_glow.on_event(event);
-                if event_response.repaint {
-                    self.gl_window.window().request_redraw();
-                }
-            }
-            _ => ()
-        }
-        false
-    }
-}
-
-impl Drop for EguiWindow {
-    fn drop(&mut self) {
-        self.egui_glow.destroy();
-    }
-}

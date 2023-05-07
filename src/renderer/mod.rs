@@ -1,31 +1,29 @@
-pub mod egui_glow_tao;
+mod gl;
 
-use std::num::NonZeroU32;
+use std::time::Instant;
+use egui::{Context, FullOutput, Visuals};
+use egui_tao::State;
 
-use glutin::config::ConfigTemplateBuilder;
-use glutin::context::{ContextApi, ContextAttributesBuilder, PossiblyCurrentContext};
-use glutin::display::{Display, GetGlDisplay};
-use glutin::prelude::*;
-use glutin::surface::{Surface, SwapInterval, WindowSurface};
-use glutin_tao::{finalize_window, ApiPreference, DisplayBuilder, GlWindow};
-use raw_window_handle::HasRawWindowHandle;
-use tao::dpi::{LogicalSize, PhysicalSize};
+use tao::dpi::{LogicalSize};
+use tao::event::{Event, WindowEvent};
 use tao::event_loop::EventLoopWindowTarget;
-use tao::window::{Window, WindowBuilder};
+use tao::window::{WindowBuilder};
+use crate::renderer::gl::{GraphicsWindow, Painter};
 
-/// The majority of `GlutinWindowContext` is taken from `eframe`
-pub struct GlutinWindowContext {
-    window: Window,
-    gl_context: PossiblyCurrentContext,
-    gl_display: Display,
-    gl_surface: Surface<WindowSurface>
+#[cfg(windows)]
+use tao::platform::windows::WindowBuilderExtWindows;
+
+pub struct EguiWindow {
+    window: GraphicsWindow,
+    painter: Painter,
+    ctx: Context,
+    state: State,
+
+    next_repaint: Option<Instant>
 }
 
-impl GlutinWindowContext {
-    // refactor this function to use `glutin-winit` crate eventually.
-    // preferably add android support at the same time.
-    #[allow(unsafe_code)]
-    unsafe fn new(event_loop: &EventLoopWindowTarget<()>) -> Self {
+impl EguiWindow {
+    pub fn new(event_loop: &EventLoopWindowTarget<()>) -> Self {
         let window_builder = WindowBuilder::new()
             .with_resizable(true)
             .with_inner_size(LogicalSize { width: 800.0, height: 600.0 })
@@ -33,112 +31,107 @@ impl GlutinWindowContext {
             .with_title("Headset Controller");
 
         #[cfg(windows)]
-        let window_builder = tao::platform::windows::WindowBuilderExtWindows::with_drag_and_drop(window_builder, false);
+        let window_builder = window_builder.with_drag_and_drop(false);
 
-        let template = ConfigTemplateBuilder::new()
-            .with_depth_size(0)
-            .with_stencil_size(0)
-            .with_transparency(false)
-            .prefer_hardware_accelerated(None);
+        let window = GraphicsWindow::new(window_builder, event_loop)
+            .expect("Failed to create graphics window");
 
-        let display_builder = DisplayBuilder::new()
-            .with_preference(ApiPreference::FallbackEgl)
-            .with_window_builder(Some(window_builder.clone()));
+        let painter = window.make_painter();
 
-        let (mut window, gl_config) = display_builder
-            .build(event_loop, template, |configs| {
-                configs
-                    .reduce(|accum, config| match config.num_samples() > accum.num_samples() {
-                        true => config,
-                        false => accum
-                    })
-                    .expect("failed to find a matching configuration for creating glutin config")
-            })
-            .expect("failed to create gl_config");
+        let ctx = Context::default();
+        ctx.set_visuals(Visuals::light());
 
-        println!("Picked a config with {} samples", gl_config.num_samples());
-
-        let raw_window_handle = window.as_ref().map(|window| window.raw_window_handle());
-        let gl_display = gl_config.display();
-
-        let context_attributes = ContextAttributesBuilder::new().build(raw_window_handle);
-
-        let fallback_context_attributes = ContextAttributesBuilder::new()
-            .with_context_api(ContextApi::Gles(None))
-            .build(raw_window_handle);
-
-        let mut not_current_gl_context = Some(unsafe {
-            gl_display
-                .create_context(&gl_config, &context_attributes)
-                .unwrap_or_else(|_| {
-                    gl_display
-                        .create_context(&gl_config, &fallback_context_attributes)
-                        .expect("failed to create context")
-                })
-        });
-
-        let window = window.take().unwrap_or_else(|| {
-            println!("window doesn't exist yet. creating one now with finalize_window");
-            finalize_window(event_loop, window_builder, &gl_config).expect("failed to finalize glutin window")
-        });
-
-        let attrs = window.build_surface_attributes(<_>::default());
-        println!("creating surface with attributes: {:?}", &attrs);
-        let gl_surface = unsafe {
-            gl_config
-                .display()
-                .create_window_surface(&gl_config, &attrs)
-                .unwrap()
-        };
-        println!("surface created successfully: {gl_surface:?}.making context current");
-        let gl_context = not_current_gl_context
-            .take()
-            .unwrap()
-            .make_current(&gl_surface)
-            .unwrap();
-
-        gl_surface
-            .set_swap_interval(&gl_context, SwapInterval::Wait(NonZeroU32::new(1).unwrap()))
-            .unwrap();
-
-        GlutinWindowContext {
+        Self {
             window,
-            gl_context,
-            gl_display,
-            gl_surface
+            painter,
+            ctx,
+            state: State::new(),
+            next_repaint: Some(Instant::now()),
+        }
+
+    }
+
+    pub fn next_repaint(&self) -> Option<Instant> {
+        self.next_repaint
+    }
+
+    pub fn focus(&self) {
+        self.window.window().set_focus();
+    }
+
+    fn redraw(&mut self, gui: impl FnMut(&Context)) {
+        let window = self.window.window();
+        let raw_input = self.state.take_egui_input(window);
+        let FullOutput {
+            platform_output,
+            repaint_after,
+            mut textures_delta,
+            shapes
+        } = self.ctx.run(raw_input, gui);
+
+        self.state
+            .handle_platform_output(window, &self.ctx, platform_output);
+
+        self.next_repaint = Instant::now().checked_add(repaint_after);
+        {
+            self.window.clear();
+
+            for (id, image_delta) in textures_delta.set {
+                self.painter.set_texture(id, &image_delta);
+            }
+
+            let clipped_primitives = self.ctx.tessellate(shapes);
+            let dimensions: [u32; 2] = window.inner_size().into();
+            self.painter
+                .paint_primitives(dimensions, self.ctx.pixels_per_point(), &clipped_primitives);
+
+            for id in textures_delta.free.drain(..) {
+                self.painter.free_texture(id);
+            }
+
+            self.window
+                .swap_buffers();
         }
     }
 
-    pub fn window(&self) -> &Window {
-        &self.window
-    }
+    pub fn handle_events(&mut self, event: &Event<()>, gui: impl FnMut(&Context)) -> bool {
+        if self
+            .next_repaint
+            .map(|t| Instant::now().checked_duration_since(t))
+            .is_some()
+        {
+            self.window.window().request_redraw();
+        }
+        match event {
+            Event::RedrawEventsCleared if cfg!(windows) => self.redraw(gui),
+            Event::RedrawRequested(_) if !cfg!(windows) => self.redraw(gui),
+            Event::WindowEvent { event, .. } => {
+                match &event {
+                    WindowEvent::CloseRequested | WindowEvent::Destroyed => {
+                        return true;
+                    }
+                    WindowEvent::Resized(physical_size) => {
+                        self.window.resize(*physical_size);
+                    }
+                    WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                        self.window.resize(**new_inner_size);
+                    }
+                    _ => {}
+                }
 
-    pub fn resize(&self, physical_size: PhysicalSize<u32>) {
-        self.gl_surface.resize(
-            &self.gl_context,
-            physical_size.width.try_into().unwrap(),
-            physical_size.height.try_into().unwrap()
-        );
-    }
-
-    pub fn swap_buffers(&self) -> glutin::error::Result<()> {
-        self.gl_surface.swap_buffers(&self.gl_context)
-    }
-
-    fn get_proc_address(&self, addr: &std::ffi::CStr) -> *const std::ffi::c_void {
-        self.gl_display.get_proc_address(addr)
+                let event_response = self.state.on_event(&self.ctx, event);
+                if event_response.repaint {
+                    self.window.window().request_redraw();
+                }
+            }
+            _ => ()
+        }
+        false
     }
 }
 
-pub fn create_display(event_loop: &EventLoopWindowTarget<()>) -> (GlutinWindowContext, glow::Context) {
-    let glutin_window_context = unsafe { GlutinWindowContext::new(event_loop) };
-    let gl = unsafe {
-        glow::Context::from_loader_function(|s| {
-            let s = std::ffi::CString::new(s).expect("failed to construct C string from string for gl proc address");
-
-            glutin_window_context.get_proc_address(&s)
-        })
-    };
-
-    (glutin_window_context, gl)
+impl Drop for EguiWindow {
+    fn drop(&mut self) {
+        self.painter.destroy();
+    }
 }
