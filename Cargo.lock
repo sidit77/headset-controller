@@ -709,6 +709,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui-d3d11"
+version = "0.21.0"
+dependencies = [
+ "bytemuck",
+ "egui",
+ "log",
+ "windows 0.48.0",
+]
+
+[[package]]
 name = "egui-tao"
 version = "0.21.1"
 source = "git+https://github.com/sidit77/egui-tao.git#6f4a405dda5b7294f6338b9f989279e6e579ab17"
@@ -1372,6 +1382,7 @@ dependencies = [
  "directories-next",
  "dunce",
  "egui",
+ "egui-d3d11",
  "egui-tao",
  "egui_glow",
  "fixed-map",

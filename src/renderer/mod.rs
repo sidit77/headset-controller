@@ -1,3 +1,4 @@
+mod d3d11;
 mod gl;
 
 use std::time::Instant;
@@ -12,7 +13,7 @@ use tao::platform::windows::WindowBuilderExtWindows;
 use tao::window::WindowBuilder;
 use tracing::instrument;
 
-use crate::renderer::gl::{GraphicsWindow, Painter};
+use crate::renderer::d3d11::{GraphicsWindow, Painter};
 
 pub struct EguiWindow {
     window: GraphicsWindow,

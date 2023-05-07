@@ -8,7 +8,7 @@ A (soon: cross-platform) app to configure wireless headphones
 ## TODO
 
 - [ ] Panic popup
-- [ ] Normal error handling
+- [ ] Normal error handling (show notification)
 - [x] Devices selection
 - [ ] handling device disconnects
 - [ ] Implement the remaining functions for arctis
