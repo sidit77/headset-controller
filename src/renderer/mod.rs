@@ -12,6 +12,7 @@ use crate::renderer::gl::{GraphicsWindow, Painter};
 
 #[cfg(windows)]
 use tao::platform::windows::WindowBuilderExtWindows;
+use tracing::instrument;
 
 pub struct EguiWindow {
     window: GraphicsWindow,
@@ -23,6 +24,8 @@ pub struct EguiWindow {
 }
 
 impl EguiWindow {
+
+    #[instrument(skip_all, name = "egui_window_new")]
     pub fn new(event_loop: &EventLoopWindowTarget<()>) -> Self {
         let window_builder = WindowBuilder::new()
             .with_resizable(true)
@@ -33,8 +36,7 @@ impl EguiWindow {
         #[cfg(windows)]
         let window_builder = window_builder.with_drag_and_drop(false);
 
-        let window = GraphicsWindow::new(window_builder, event_loop)
-            .expect("Failed to create graphics window");
+        let window = GraphicsWindow::new(window_builder, event_loop);
 
         let painter = window.make_painter();
 
@@ -59,6 +61,7 @@ impl EguiWindow {
         self.window.window().set_focus();
     }
 
+    #[instrument(skip_all)]
     fn redraw(&mut self, gui: impl FnMut(&Context)) {
         let window = self.window.window();
         let raw_input = self.state.take_egui_input(window);
@@ -94,6 +97,7 @@ impl EguiWindow {
         }
     }
 
+    #[instrument(skip_all)]
     pub fn handle_events(&mut self, event: &Event<()>, gui: impl FnMut(&Context)) -> bool {
         if self
             .next_repaint
@@ -131,6 +135,8 @@ impl EguiWindow {
 }
 
 impl Drop for EguiWindow {
+
+    #[instrument(skip_all)]
     fn drop(&mut self) {
         self.painter.destroy();
     }

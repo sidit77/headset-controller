@@ -2,9 +2,8 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 pub use egui_glow::Painter;
 use tao::window::{Window, WindowBuilder};
-use color_eyre::Result;
 use glow::{COLOR_BUFFER_BIT, Context, HasContext};
-use glutin::config::{ConfigTemplateBuilder, GlConfig};
+use glutin::config::{ConfigTemplateBuilder};
 use glutin::context::{ContextApi, ContextAttributesBuilder, NotCurrentGlContextSurfaceAccessor, PossiblyCurrentContext};
 use glutin::display::{Display, GetGlDisplay, GlDisplay};
 use glutin::surface::{GlSurface, Surface, SurfaceAttributesBuilder, SwapInterval, WindowSurface};
@@ -24,32 +23,29 @@ pub struct GraphicsWindow {
 
 impl GraphicsWindow {
 
-    #[instrument(skip_all)]
-    pub fn new(window_builder: WindowBuilder, event_loop: &EventLoopWindowTarget<()>) -> Result<Self> {
+    #[instrument(skip_all, name = "gl_window_new")]
+    pub fn new(window_builder: WindowBuilder, event_loop: &EventLoopWindowTarget<()>) -> Self {
         let template = ConfigTemplateBuilder::new()
             .with_depth_size(0)
             .with_stencil_size(0)
             .with_transparency(false)
             .prefer_hardware_accelerated(None);
 
-        let display_builder = DisplayBuilder::new()
+        tracing::debug!("trying to get gl_config");
+        let (mut window, gl_config) =  DisplayBuilder::new()
             .with_preference(ApiPreference::FallbackEgl)
-            .with_window_builder(Some(window_builder.clone()));
-
-        let (mut window, gl_config) = display_builder
-            .build(event_loop, template, |configs| {
+            .with_window_builder(Some(window_builder.clone()))
+            .build(event_loop, template, |mut configs| {
                 configs
-                    .reduce(|accum, config| match config.num_samples() > accum.num_samples() {
-                        true => config,
-                        false => accum
-                    })
+                    .next()
                     .expect("failed to find a matching configuration for creating glutin config")
             })
             .expect("failed to create gl_config");
 
-        println!("Picked a config with {} samples", gl_config.num_samples());
+        tracing::debug!("found gl_config: {:?}", &gl_config);
 
         let raw_window_handle = window.as_ref().map(|window| window.raw_window_handle());
+        tracing::debug!("raw window handle: {:?}", raw_window_handle);
         let gl_display = gl_config.display();
 
         let context_attributes = ContextAttributesBuilder::new().build(raw_window_handle);
@@ -62,6 +58,11 @@ impl GraphicsWindow {
             gl_display
                 .create_context(&gl_config, &context_attributes)
                 .unwrap_or_else(|_| {
+                    tracing::debug!(
+                        "failed to create gl_context with attributes: {:?}. retrying with fallback context attributes: {:?}",
+                        &context_attributes,
+                        &fallback_context_attributes
+                    );
                     gl_display
                         .create_context(&gl_config, &fallback_context_attributes)
                         .expect("failed to create context")
@@ -69,28 +70,29 @@ impl GraphicsWindow {
         });
 
         let window = window.take().unwrap_or_else(|| {
-            println!("window doesn't exist yet. creating one now with finalize_window");
-            finalize_window(event_loop, window_builder, &gl_config).expect("failed to finalize glutin window")
+            tracing::debug!("window doesn't exist yet. creating one now with finalize_window");
+            finalize_window(event_loop, window_builder, &gl_config)
+                .expect("failed to finalize glutin window")
         });
 
         let attrs = window.build_surface_attributes(SurfaceAttributesBuilder::default());
-        println!("creating surface with attributes: {:?}", &attrs);
+        tracing::debug!("creating surface with attributes: {:?}", &attrs);
         let gl_surface = unsafe {
             gl_config
                 .display()
                 .create_window_surface(&gl_config, &attrs)
-                .unwrap()
+                .expect("Failed to create window surface")
         };
-        println!("surface created successfully: {gl_surface:?}.making context current");
+        tracing::debug!("surface created successfully: {:?}.making context current", gl_surface);
         let gl_context = not_current_gl_context
             .take()
             .unwrap()
             .make_current(&gl_surface)
-            .unwrap();
+            .expect("Could not make context current");
 
         gl_surface
             .set_swap_interval(&gl_context, SwapInterval::Wait(NonZeroU32::new(1).unwrap()))
-            .unwrap();
+            .expect("Failed to activate vsync");
 
         let gl = Arc::new(unsafe {
             Context::from_loader_function(|s| {
@@ -100,15 +102,16 @@ impl GraphicsWindow {
             })
         });
 
-        Ok(Self {
+        Self {
             window,
             gl_context,
             _gl_display: gl_display,
             gl_surface,
             gl,
-        })
+        }
     }
 
+    #[instrument(skip_all)]
     pub fn make_painter(&self) -> Painter {
         Painter::new(self.gl.clone(), "", None)
             .unwrap()
@@ -118,6 +121,7 @@ impl GraphicsWindow {
         &self.window
     }
 
+    #[instrument(skip(self))]
     pub fn resize(&self, physical_size: PhysicalSize<u32>) {
         self.gl_surface.resize(
             &self.gl_context,
@@ -126,6 +130,7 @@ impl GraphicsWindow {
         );
     }
 
+    #[instrument(skip(self))]
     pub fn clear(&self) {
         let clear_color = [0.1, 0.1, 0.1];
         unsafe {
@@ -135,6 +140,7 @@ impl GraphicsWindow {
         }
     }
 
+    #[instrument(skip(self))]
     pub fn swap_buffers(&self) {
         self.gl_surface.swap_buffers(&self.gl_context)
             .expect("Failed to swap buffers")
