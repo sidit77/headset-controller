@@ -711,6 +711,7 @@ dependencies = [
 [[package]]
 name = "egui-d3d11"
 version = "0.21.0"
+source = "git+https://github.com/sidit77/egui-d3d11.git#2909c15a16cc653d905768f22330589e7b2e8a11"
 dependencies = [
  "bytemuck",
  "egui",
