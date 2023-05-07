@@ -1,18 +1,18 @@
 mod gl;
 
 use std::time::Instant;
+
 use egui::{Context, FullOutput, Visuals};
 use egui_tao::State;
-
-use tao::dpi::{LogicalSize};
+use tao::dpi::LogicalSize;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::EventLoopWindowTarget;
-use tao::window::{WindowBuilder};
-use crate::renderer::gl::{GraphicsWindow, Painter};
-
 #[cfg(windows)]
 use tao::platform::windows::WindowBuilderExtWindows;
+use tao::window::WindowBuilder;
 use tracing::instrument;
+
+use crate::renderer::gl::{GraphicsWindow, Painter};
 
 pub struct EguiWindow {
     window: GraphicsWindow,
@@ -24,7 +24,6 @@ pub struct EguiWindow {
 }
 
 impl EguiWindow {
-
     #[instrument(skip_all, name = "egui_window_new")]
     pub fn new(event_loop: &EventLoopWindowTarget<()>) -> Self {
         let window_builder = WindowBuilder::new()
@@ -48,9 +47,8 @@ impl EguiWindow {
             painter,
             ctx,
             state: State::new(),
-            next_repaint: Some(Instant::now()),
+            next_repaint: Some(Instant::now())
         }
-
     }
 
     pub fn next_repaint(&self) -> Option<Instant> {
@@ -92,8 +90,7 @@ impl EguiWindow {
                 self.painter.free_texture(id);
             }
 
-            self.window
-                .swap_buffers();
+            self.window.swap_buffers();
         }
     }
 
@@ -135,7 +132,6 @@ impl EguiWindow {
 }
 
 impl Drop for EguiWindow {
-
     #[instrument(skip_all)]
     fn drop(&mut self) {
         self.painter.destroy();

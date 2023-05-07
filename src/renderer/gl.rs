@@ -1,16 +1,17 @@
 use std::num::NonZeroU32;
 use std::sync::Arc;
+
 pub use egui_glow::Painter;
-use tao::window::{Window, WindowBuilder};
-use glow::{COLOR_BUFFER_BIT, Context, HasContext};
-use glutin::config::{ConfigTemplateBuilder};
+use glow::{Context, HasContext, COLOR_BUFFER_BIT};
+use glutin::config::ConfigTemplateBuilder;
 use glutin::context::{ContextApi, ContextAttributesBuilder, NotCurrentGlContextSurfaceAccessor, PossiblyCurrentContext};
 use glutin::display::{Display, GetGlDisplay, GlDisplay};
 use glutin::surface::{GlSurface, Surface, SurfaceAttributesBuilder, SwapInterval, WindowSurface};
-use glutin_tao::{ApiPreference, DisplayBuilder, finalize_window, GlWindow};
+use glutin_tao::{finalize_window, ApiPreference, DisplayBuilder, GlWindow};
 use raw_window_handle::HasRawWindowHandle;
 use tao::dpi::PhysicalSize;
 use tao::event_loop::EventLoopWindowTarget;
+use tao::window::{Window, WindowBuilder};
 use tracing::instrument;
 
 pub struct GraphicsWindow {
@@ -22,7 +23,6 @@ pub struct GraphicsWindow {
 }
 
 impl GraphicsWindow {
-
     #[instrument(skip_all, name = "gl_window_new")]
     pub fn new(window_builder: WindowBuilder, event_loop: &EventLoopWindowTarget<()>) -> Self {
         let template = ConfigTemplateBuilder::new()
@@ -32,7 +32,7 @@ impl GraphicsWindow {
             .prefer_hardware_accelerated(None);
 
         tracing::debug!("trying to get gl_config");
-        let (mut window, gl_config) =  DisplayBuilder::new()
+        let (mut window, gl_config) = DisplayBuilder::new()
             .with_preference(ApiPreference::FallbackEgl)
             .with_window_builder(Some(window_builder.clone()))
             .build(event_loop, template, |mut configs| {
@@ -71,8 +71,7 @@ impl GraphicsWindow {
 
         let window = window.take().unwrap_or_else(|| {
             tracing::debug!("window doesn't exist yet. creating one now with finalize_window");
-            finalize_window(event_loop, window_builder, &gl_config)
-                .expect("failed to finalize glutin window")
+            finalize_window(event_loop, window_builder, &gl_config).expect("failed to finalize glutin window")
         });
 
         let attrs = window.build_surface_attributes(SurfaceAttributesBuilder::default());
@@ -96,8 +95,7 @@ impl GraphicsWindow {
 
         let gl = Arc::new(unsafe {
             Context::from_loader_function(|s| {
-                let s = std::ffi::CString::new(s)
-                    .expect("failed to construct C string from string for gl proc address");
+                let s = std::ffi::CString::new(s).expect("failed to construct C string from string for gl proc address");
                 gl_display.get_proc_address(&s)
             })
         });
@@ -107,14 +105,13 @@ impl GraphicsWindow {
             gl_context,
             _gl_display: gl_display,
             gl_surface,
-            gl,
+            gl
         }
     }
 
     #[instrument(skip_all)]
     pub fn make_painter(&self) -> Painter {
-        Painter::new(self.gl.clone(), "", None)
-            .unwrap()
+        Painter::new(self.gl.clone(), "", None).unwrap()
     }
 
     pub fn window(&self) -> &Window {
@@ -142,9 +139,8 @@ impl GraphicsWindow {
 
     #[instrument(skip(self))]
     pub fn swap_buffers(&self) {
-        self.gl_surface.swap_buffers(&self.gl_context)
+        self.gl_surface
+            .swap_buffers(&self.gl_context)
             .expect("Failed to swap buffers")
     }
-
 }
-

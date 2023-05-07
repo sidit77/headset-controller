@@ -10,11 +10,11 @@ mod tray;
 mod ui;
 mod util;
 
-use std::sync::{Mutex};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use color_eyre::Result;
-use tao::event::{Event};
+use tao::event::Event;
 use tao::event_loop::{ControlFlow, EventLoop};
 use tao::platform::run_return::EventLoopExtRunReturn;
 use tracing::instrument;
@@ -358,5 +358,3 @@ fn get_preferred_device(device_manager: &DeviceManager, config: &Config) -> (Vec
         .next();
     (devices, device)
 }
-
-
