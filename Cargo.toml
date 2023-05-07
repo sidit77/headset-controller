@@ -8,6 +8,11 @@ lto = true
 # strip="symbols"
 codegen-units=1
 
+[features]
+directx = ["egui-d3d11"]
+opengl = ["glutin", "glow", "egui_glow", "glutin-tao"]
+default = ["opengl"]
+
 [dependencies]
 tracing = "0.1"
 tracing-subscriber = "0.3"
@@ -26,12 +31,12 @@ raw-window-handle = "0.5"
 tao = { version = "0.19", features = ["tray"] }
 egui-tao = { git = "https://github.com/sidit77/egui-tao.git"}
 
-glutin = "0.30"
-glow = "0.12"
-egui_glow = { version = "0.21" }
-glutin-tao = { git = "https://github.com/sidit77/glutin-tao.git" }
+glutin = { version = "0.30", optional = true }
+glow = { version = "0.12", optional = true }
+egui_glow = { version = "0.21", optional = true }
+glutin-tao = { git = "https://github.com/sidit77/glutin-tao.git", optional = true }
 
-egui-d3d11 = {path = "../egui-d3d11"}
+egui-d3d11 = {path = "../egui-d3d11", optional = true}
 
 [target."cfg(not(target_os = \"windows\"))".dependencies]
 notify-rust = "4.7"
@@ -60,8 +65,6 @@ features = [
     "Data_Xml_Dom",
     "UI_Notifications",
     "implement",
-
-
 ]
 
 [target."cfg(target_os = \"windows\")".build-dependencies]

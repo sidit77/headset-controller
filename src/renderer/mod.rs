@@ -1,5 +1,16 @@
-mod d3d11;
-mod gl;
+#[cfg(all(not(windows), feature = "directx"))]
+compile_error!("DirectX is only supported on windows.");
+
+#[cfg(not(any(feature = "directx", feature = "opengl")))]
+compile_error!("You must select a backend. Use --feature directx/opengl");
+
+#[cfg(feature = "directx")]
+#[path = "d3d11.rs"]
+mod backend;
+
+#[cfg(feature = "opengl")]
+#[path = "gl.rs"]
+mod backend;
 
 use std::time::Instant;
 
@@ -13,7 +24,7 @@ use tao::platform::windows::WindowBuilderExtWindows;
 use tao::window::WindowBuilder;
 use tracing::instrument;
 
-use crate::renderer::d3d11::{GraphicsWindow, Painter};
+use crate::renderer::backend::{GraphicsWindow, Painter};
 
 pub struct EguiWindow {
     window: GraphicsWindow,
