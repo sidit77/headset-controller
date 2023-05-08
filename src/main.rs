@@ -48,7 +48,7 @@ fn main() -> Result<()> {
     let mut audio_system = AudioSystem::new();
 
     let mut device_manager = DeviceManager::new()?;
-    let mut device: Option<BoxedDevice> = None;//device_manager.find_preferred_device(&config.preferred_device);
+    let mut device = device_manager.find_preferred_device(&config.preferred_device);
 
     let mut event_loop = EventLoop::new();
 
