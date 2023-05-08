@@ -42,10 +42,16 @@ pub fn config_ui(
     CentralPanel::default().show(ctx, |ui| central_panel(ui, debouncer, config, device, audio_system));
 }
 
-pub fn no_device_ui(ctx: &Context) {
+#[instrument(skip_all)]
+pub fn no_device_ui(ctx: &Context, debouncer: &mut Debouncer) {
     CentralPanel::default().show(ctx, |ctx| {
-        ctx.centered_and_justified(|ctx| {
+        ctx.vertical_centered(|ctx| {
+            ctx.add_space(ctx.available_height() / 3.0);
             ctx.label(RichText::new("No supported device detected!").size(20.0));
+            ctx.add_space(10.0);
+            if ctx.button(RichText::new("Refresh").size(15.0)).clicked() {
+                debouncer.submit_all([Action::RefreshDeviceList, Action::SwitchDevice]);
+            }
         });
     });
 }

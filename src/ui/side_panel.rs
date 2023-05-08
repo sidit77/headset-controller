@@ -42,6 +42,10 @@ pub fn side_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config, d
                 debouncer.submit_all([Action::SaveConfig, Action::SwitchDevice]);
             }
         }
+        ui.separator();
+        if ui.button(" Refresh ").clicked() {
+            debouncer.submit(Action::RefreshDeviceList);
+        }
     });
     ui.separator();
     if device.is_connected() {

@@ -27,7 +27,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use crate::audio::AudioSystem;
 use crate::config::{log_file, Config, EqualizerConfig, HeadsetConfig};
 use crate::debouncer::{Action, Debouncer};
-use crate::devices::{BatteryLevel, BoxedDevice, Device, DeviceManager, SupportedDevice};
+use crate::devices::{BatteryLevel, BoxedDevice, Device, DeviceManager};
 use crate::renderer::EguiWindow;
 use crate::tray::{AppTray, TrayEvent};
 
@@ -47,8 +47,8 @@ fn main() -> Result<()> {
 
     let mut audio_system = AudioSystem::new();
 
-    let device_manager = DeviceManager::new()?;
-    let (mut devices, mut device) = get_preferred_device(&device_manager, &config);
+    let mut device_manager = DeviceManager::new()?;
+    let mut device: Option<BoxedDevice> = None;//device_manager.find_preferred_device(&config.preferred_device);
 
     let mut event_loop = EventLoop::new();
 
@@ -69,8 +69,14 @@ fn main() -> Result<()> {
             .as_mut()
             .map(|w| {
                 w.handle_events(&event, |egui_ctx| match &device {
-                    Some(device) => ui::config_ui(egui_ctx, &mut debouncer, &mut config, device.as_ref(), &devices, &mut audio_system),
-                    None => ui::no_device_ui(egui_ctx)
+                    Some(device) => ui::config_ui(
+                        egui_ctx,
+                        &mut debouncer,
+                        &mut config,
+                        device.as_ref(),
+                        &device_manager.supported_devices(),
+                        &mut audio_system),
+                    None => ui::no_device_ui(egui_ctx, &mut debouncer)
                 })
             })
             .unwrap_or(false)
@@ -124,11 +130,12 @@ fn main() -> Result<()> {
                     let _span = tracing::info_span!("debouncer_event", ?action).entered();
                     tracing::trace!("Processing event");
                     match action {
+                        Action::RefreshDeviceList => device_manager
+                            .refresh()
+                            .unwrap_or_else(|err| tracing::warn!("Failed to refresh devices: {}", err)),
                         Action::SwitchDevice => {
                             if config.preferred_device != device.as_ref().map(|d| d.name().to_string()) {
-                                let (list, dev) = get_preferred_device(&device_manager, &config);
-                                device = dev;
-                                devices = list;
+                                device = device_manager.find_preferred_device(&config.preferred_device);
                                 submit_full_change(&mut debouncer);
                                 debouncer.submit_all([Action::UpdateTray, Action::UpdateTrayTooltip]);
                             } else {
@@ -358,23 +365,3 @@ pub fn update_tray_tooltip(tray: &mut AppTray, device: &Option<BoxedDevice>) {
     tracing::trace!("Updated tooltip");
 }
 
-#[instrument(skip_all)]
-fn get_preferred_device(device_manager: &DeviceManager, config: &Config) -> (Vec<Box<dyn SupportedDevice>>, Option<BoxedDevice>) {
-    let devices = device_manager.supported_devices();
-    for dev in &devices {
-        tracing::info!("Found: {}", dev.name());
-    }
-    let device = config
-        .preferred_device
-        .iter()
-        .flat_map(|pref| devices.iter().filter(move |dev| dev.name() == pref))
-        .chain(devices.iter())
-        .filter_map(|dev| {
-            device_manager
-                .open(dev.as_ref())
-                .map_err(|err| tracing::error!("Failed to open device: {:?}", err))
-                .ok()
-        })
-        .next();
-    (devices, device)
-}

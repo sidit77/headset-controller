@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use color_eyre::eyre::Error as EyreError;
 use hidapi::{DeviceInfo, HidApi, HidDevice};
+use tracing::instrument;
 
 use crate::config::CallAction;
 use crate::devices::arctis_nova_7::ArcticsNova7;
@@ -128,8 +129,6 @@ pub trait Device {
     }
 }
 
-pub type BoxedDevice = Box<dyn Device>;
-
 pub trait SupportedDevice {
     fn get_info(&self) -> &Info;
     fn open(&self, api: &HidApi) -> DeviceResult<BoxedDevice>;
@@ -139,7 +138,9 @@ pub trait SupportedDevice {
     }
 }
 
-pub type CheckSupport = fn(info: &DeviceInfo) -> Option<Box<dyn SupportedDevice>>;
+pub type BoxedDevice = Box<dyn Device>;
+pub type BoxedSupportedDevice = Box<dyn SupportedDevice>;
+pub type CheckSupport = fn(info: &DeviceInfo) -> Option<BoxedSupportedDevice>;
 
 #[derive(Debug, Clone)]
 pub struct GenericHidDevice<T> {
@@ -187,24 +188,65 @@ fn get_dummy_device() -> Option<Box<dyn SupportedDevice>> {
     }
 }
 
-pub struct DeviceManager(HidApi);
+pub struct DeviceManager {
+    api: HidApi,
+    devices: Vec<BoxedSupportedDevice>
+}
 
 impl DeviceManager {
+
     pub fn new() -> DeviceResult<Self> {
-        Ok(Self(HidApi::new()?))
+        let api = HidApi::new()?;
+        let mut result = Self {
+            api,
+            devices: Vec::new(),
+        };
+        result.find_supported_devices();
+        Ok(result)
     }
 
-    pub fn supported_devices(&self) -> Vec<Box<dyn SupportedDevice>> {
-        self.0
+    #[instrument(skip_all)]
+    fn find_supported_devices(&mut self) {
+        self.devices.clear();
+        self.api
             .device_list()
             .flat_map(|info| SUPPORTED_DEVICES.iter().filter_map(|check| check(info)))
             .chain(get_dummy_device())
-            .collect::<Vec<_>>()
+            .for_each(|dev| {
+                tracing::debug!("Found {}", dev.name());
+                self.devices.push(dev);
+            });
+    }
+
+    pub fn refresh(&mut self) -> DeviceResult<()> {
+        self.api.refresh_devices()?;
+        self.find_supported_devices();
+        Ok(())
+    }
+
+    pub fn supported_devices(&self) -> &Vec<BoxedSupportedDevice> {
+        &self.devices
     }
 
     pub fn open(&self, supported: &dyn SupportedDevice) -> DeviceResult<BoxedDevice> {
-        supported.open(&self.0)
+        supported.open(&self.api)
     }
+
+    #[instrument(skip(self))]
+    pub fn find_preferred_device(&self, preference: &Option<String>) -> Option<BoxedDevice> {
+        preference
+            .iter()
+            .flat_map(|pref| self.devices.iter().filter(move |dev| dev.name() == pref))
+            .chain(self.devices.iter())
+            .filter_map(|dev| {
+                self
+                    .open(dev.as_ref())
+                    .map_err(|err| tracing::error!("Failed to open device: {:?}", err))
+                    .ok()
+            })
+            .next()
+    }
+
 }
 
 pub type DeviceResult<T> = Result<T, EyreError>;

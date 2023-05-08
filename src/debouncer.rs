@@ -22,6 +22,7 @@ pub enum Action {
     UpdateSystemAudio,
     UpdateTray,
     UpdateTrayTooltip,
+    RefreshDeviceList,
     SwitchDevice
 }
 
@@ -30,6 +31,7 @@ impl Action {
         match self {
             Action::SaveConfig => Duration::from_secs(10),
             Action::SwitchDevice => Duration::from_millis(10),
+            Action::RefreshDeviceList => Duration::from_millis(10),
             _ => Duration::from_millis(500)
         }
     }
