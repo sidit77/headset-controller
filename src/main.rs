@@ -74,8 +74,9 @@ fn main() -> Result<()> {
                         &mut debouncer,
                         &mut config,
                         device.as_ref(),
-                        &device_manager.supported_devices(),
-                        &mut audio_system),
+                        device_manager.supported_devices(),
+                        &mut audio_system
+                    ),
                     None => ui::no_device_ui(egui_ctx, &mut debouncer)
                 })
             })
@@ -333,7 +334,7 @@ pub fn update_tray(tray: &mut AppTray, config: &mut Config, device_name: Option<
     match device_name {
         None => {
             tray.build_menu(0, |_| ("", false));
-        },
+        }
         Some(device_name) => {
             let headset = config.get_headset(device_name);
             let selected = headset.selected_profile_index as usize;
@@ -348,7 +349,7 @@ pub fn update_tray_tooltip(tray: &mut AppTray, device: &Option<BoxedDevice>) {
     match device {
         None => {
             tray.set_tooltip("No Device");
-        },
+        }
         Some(device) => {
             let name = device.name().to_string();
             let tooltip = match device.is_connected() {
@@ -356,7 +357,7 @@ pub fn update_tray_tooltip(tray: &mut AppTray, device: &Option<BoxedDevice>) {
                     Some(BatteryLevel::Charging) => format!("{name}\nBattery: Charging"),
                     Some(BatteryLevel::Level(level)) => format!("{name}\nBattery: {level}%"),
                     _ => format!("{name}\nConnected")
-                }
+                },
                 false => format!("{name}\nDisconnected")
             };
             tray.set_tooltip(&tooltip);
@@ -364,4 +365,3 @@ pub fn update_tray_tooltip(tray: &mut AppTray, device: &Option<BoxedDevice>) {
     }
     tracing::trace!("Updated tooltip");
 }
-

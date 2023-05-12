@@ -194,13 +194,9 @@ pub struct DeviceManager {
 }
 
 impl DeviceManager {
-
     pub fn new() -> DeviceResult<Self> {
         let api = HidApi::new()?;
-        let mut result = Self {
-            api,
-            devices: Vec::new(),
-        };
+        let mut result = Self { api, devices: Vec::new() };
         result.find_supported_devices();
         Ok(result)
     }
@@ -239,14 +235,12 @@ impl DeviceManager {
             .flat_map(|pref| self.devices.iter().filter(move |dev| dev.name() == pref))
             .chain(self.devices.iter())
             .filter_map(|dev| {
-                self
-                    .open(dev.as_ref())
+                self.open(dev.as_ref())
                     .map_err(|err| tracing::error!("Failed to open device: {:?}", err))
                     .ok()
             })
             .next()
     }
-
 }
 
 pub type DeviceResult<T> = Result<T, EyreError>;
