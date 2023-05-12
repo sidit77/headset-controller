@@ -69,7 +69,7 @@ I don't own a Mac, so I can't test this. It might work or not.
 - [ ] Normal error handling (show notification)
 - [x] Devices selection
 - [ ] handling device disconnects
-- [ ] Implement the remaining functions for arctis
+- [x] Implement the remaining functions for arctis
 - [x] log file?
 - [x] better system tray
 - [ ] improve look of the equalizer

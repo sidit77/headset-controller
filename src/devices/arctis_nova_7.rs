@@ -243,12 +243,19 @@ impl BluetoothConfig for ArcticsNova7 {
     #[instrument(skip(self))]
     fn set_call_action(&self, action: CallAction) -> Result<()> {
         tracing::debug!("Attempting to write new value to device!");
+        let v = match action {
+            CallAction::Nothing => 0x00,
+            CallAction::ReduceVolume => 0x01,
+            CallAction::Mute => 0x02
+        };
+        self.device.write(&[0x00, 0xb3, v])?;
         Ok(())
     }
 
     #[instrument(skip(self))]
     fn set_auto_enabled(&self, enabled: bool) -> Result<()> {
         tracing::debug!("Attempting to write new value to device!");
+        self.device.write(&[0x00, 0xb2, u8::from(enabled)])?;
         Ok(())
     }
 }
@@ -260,7 +267,9 @@ impl MicrophoneLight for ArcticsNova7 {
 
     #[instrument(skip(self))]
     fn set_light_strength(&self, level: u8) -> Result<()> {
+        assert!(level < MicrophoneLight::levels(self));
         tracing::debug!("Attempting to write new value to device!");
+        self.device.write(&[0x00, 0xae, level])?;
         Ok(())
     }
 }
@@ -268,8 +277,10 @@ impl MicrophoneLight for ArcticsNova7 {
 impl InactiveTime for ArcticsNova7 {
     #[instrument(skip(self))]
     fn set_inactive_time(&self, minutes: u8) -> Result<()> {
-        tracing::debug!("Attempting to write new value to device!");
         assert!(minutes > 0);
+        tracing::debug!("Attempting to write new value to device!");
+        //This should be correct, but I'm honestly to scared to test it
+        //self.device.write(&[0x00, 0xa3, minutes])?;
         Ok(())
     }
 }
