@@ -1,0 +1,36 @@
+name: release
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+
+jobs:
+  release:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            api: directx
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Build binary
+        run: cargo build --release --locked --target=${{ matrix.target }}  --no-default-features --features ${{ matrix.api }} --color=always --verbose
+
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ./target/${{ matrix.target }}/release/headset-controller.exe
