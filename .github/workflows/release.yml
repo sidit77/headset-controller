@@ -15,6 +15,9 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             api: directx
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            api: opengl
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -26,11 +29,42 @@ jobs:
         with:
           target: ${{ matrix.target }}
 
-      - name: Build binary
+      - name: Setup Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux Dependencies
+        if: ${{ runner.os == 'Linux' }}
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev libudev-dev
+
+      - name: Build Binary
         run: cargo build --release --locked --target=${{ matrix.target }}  --no-default-features --features ${{ matrix.api }} --color=always --verbose
 
+      - name: Package (*nix)
+        if: ${{ runner.os != 'Windows' }}
+        run: >
+          tar -cv
+          -C target/${{ matrix.target }}/release/ headset-controller
+          | gzip --best > 'headset-controller-${{ matrix.target }}.tar.gz'
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: >
+          7z a headset-controller-${{ matrix.target }}.zip
+          ./target/${{ matrix.target }}/release/headset-controller.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            *.zip
+            *.tar.gz
+
       - name: Create release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v1
         with:
+          draft: true
           files: |
-            ./target/${{ matrix.target }}/release/headset-controller.exe
+            *.zip
+            *.tar.gz
