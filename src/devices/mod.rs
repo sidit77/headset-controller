@@ -1,17 +1,19 @@
 mod arctis_nova_7;
-mod dummy;
+//mod dummy;
 
+use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
-use std::marker::PhantomData;
+use std::future::Future;
+use std::pin::Pin;
 use std::time::Duration;
+use async_hid::DeviceInfo;
 
 use color_eyre::eyre::Error as EyreError;
-use hidapi::{DeviceInfo, HidApi, HidDevice};
 use tracing::instrument;
 
-use crate::config::{CallAction, DUMMY_DEVICE};
-use crate::devices::arctis_nova_7::ArcticsNova7;
-use crate::devices::dummy::DummyDevice;
+use crate::config::{CallAction};
+use crate::devices::arctis_nova_7::{ARCTIS_NOVA_7X};
+//use crate::devices::dummy::DummyDevice;
 
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq)]
 pub enum BatteryLevel {
@@ -79,6 +81,40 @@ pub trait InactiveTime {
     fn set_inactive_time(&self, minutes: u8) -> DeviceResult<()>;
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct Interface {
+    pub product_id: u16,
+    pub vendor_id: u16,
+    pub usage_id: u16,
+    pub usage_page: u16
+}
+
+impl Interface {
+    pub const fn new(usage_page: u16, usage_id: u16, vendor_id: u16, product_id: u16) -> Self {
+        Self { product_id, vendor_id, usage_id, usage_page }
+    }
+}
+
+impl From<&DeviceInfo> for Interface {
+    fn from(value: &DeviceInfo) -> Self {
+        Interface::new(value.usage_page, value.usage_id, value.vendor_id, value.product_id)
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct SupportedDevice {
+    name: &'static str,
+    required_interfaces: &'static [Interface],
+    open: fn(interfaces: &HashMap<Interface, DeviceInfo>) -> BoxedDeviceFuture
+}
+
+impl Display for SupportedDevice {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name)
+    }
+}
+
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Info {
     pub manufacturer: String,
@@ -128,59 +164,58 @@ pub trait Device {
         None
     }
 }
-
-pub trait SupportedDevice {
-    fn get_info(&self) -> &Info;
-    fn open(&self, api: &HidApi) -> DeviceResult<BoxedDevice>;
-
-    fn name(&self) -> &str {
-        &self.get_info().name
-    }
-}
-
 pub type BoxedDevice = Box<dyn Device>;
-pub type BoxedSupportedDevice = Box<dyn SupportedDevice>;
-pub type CheckSupport = fn(info: &DeviceInfo) -> Option<BoxedSupportedDevice>;
+pub type BoxedDeviceFuture<'a> = Pin<Box<dyn Future<Output=DeviceResult<BoxedDevice>> + 'a>>;
 
-#[derive(Debug, Clone)]
-pub struct GenericHidDevice<T> {
-    device_info: DeviceInfo,
-    info: Info,
-    _marker: PhantomData<T>
+pub const SUPPORTED_DEVICES: &[SupportedDevice] = &[ARCTIS_NOVA_7X];
+
+#[derive(Debug, Clone, Default)]
+pub struct DeviceManager {
+    interfaces: HashMap<Interface, DeviceInfo>,
+    devices: Vec<SupportedDevice>
 }
 
-impl<T> GenericHidDevice<T> {
-    pub fn new(info: &DeviceInfo, fallback_manufacturer: &str, fallback_product: &str) -> Self {
-        let manufacturer = info
-            .manufacturer_string()
-            .unwrap_or(fallback_manufacturer)
-            .to_string();
-        let product = info
-            .product_string()
-            .unwrap_or(fallback_product)
-            .to_string();
-        let name = format!("{} {}", manufacturer, product);
-        Self {
-            device_info: info.clone(),
-            info: Info { manufacturer, product, name },
-            _marker: Default::default()
-        }
+impl DeviceManager {
+
+    pub async fn new() -> DeviceResult<Self> {
+        let mut result = Self::default();
+        result.refresh().await?;
+        Ok(result)
+    }
+
+    #[instrument(skip_all)]
+    pub async fn refresh(&mut self) -> DeviceResult<()> {
+        self.interfaces.clear();
+        self.interfaces.extend(DeviceInfo::enumerate()
+            .await?
+            .into_iter()
+            .map(|dev| (Interface::from(&dev), dev)));
+
+        self.devices.clear();
+        self.devices.extend(SUPPORTED_DEVICES
+            .iter()
+            .filter(|dev| dev
+                .required_interfaces
+                .iter()
+                .all(|i| self.interfaces.contains_key(i)))
+            .inspect(|dev| println!("Found {}", dev.name)));
+
+        Ok(())
+    }
+
+    pub fn supported_devices(&self) -> &Vec<SupportedDevice> {
+        &self.devices
+    }
+
+    pub async fn open(&self, supported: &SupportedDevice) -> DeviceResult<BoxedDevice> {
+        println!("Opening {}", supported.name);
+        let dev = (supported.open)(&self.interfaces).await?;
+
+        Ok(dev)
     }
 }
 
-impl<T: From<(HidDevice, Info)> + Device + 'static> SupportedDevice for GenericHidDevice<T> {
-    fn get_info(&self) -> &Info {
-        &self.info
-    }
-
-    fn open(&self, api: &HidApi) -> DeviceResult<BoxedDevice> {
-        let device = self.device_info.open_device(api)?;
-        Ok(Box::new(T::from((device, self.info.clone()))))
-    }
-}
-
-const SUPPORTED_DEVICES: &[CheckSupport] = &[ArcticsNova7::SUPPORT];
-
+/*
 pub struct DeviceManager {
     api: HidApi,
     devices: Vec<BoxedSupportedDevice>
@@ -236,6 +271,7 @@ impl DeviceManager {
             .next()
     }
 }
+*/
 
 pub type DeviceResult<T> = Result<T, EyreError>;
 

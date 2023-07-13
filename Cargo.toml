@@ -19,7 +19,7 @@ tracing-subscriber = "0.3"
 tracing-error = "0.2"
 color-eyre = "0.6"
 
-hidapi = { git = "https://github.com/sidit77/hidapi-rs.git", default-features = false, features = ["windows-native", "linux-native"] }
+#hidapi = { git = "https://github.com/sidit77/hidapi-rs.git", default-features = false, features = ["windows-native", "linux-native"] }
 async-hid = { path = "../async-hid"}
 tokio = { version = "1", features = ["full"]}
 # hidapi = "2.3"

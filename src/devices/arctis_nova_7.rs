@@ -1,24 +1,24 @@
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use color_eyre::eyre::eyre;
-use hidapi::HidDevice;
+use tokio::task::JoinHandle;
 use tracing::instrument;
+use async_hid::{Device as HidDevice, DeviceInfo};
+use tokio::spawn;
 
 use crate::config::CallAction;
-use crate::devices::{
-    BatteryLevel, BluetoothConfig, ChatMix, CheckSupport, Device, DeviceResult as Result, Equalizer, GenericHidDevice, InactiveTime, Info,
-    MicrophoneLight, MicrophoneVolume, SideTone, VolumeLimiter
-};
+use crate::devices::{BatteryLevel, BluetoothConfig, BoxedDevice, BoxedDeviceFuture, ChatMix, Device, DeviceResult as Result, DeviceResult, Equalizer, InactiveTime, Info, Interface, MicrophoneLight, MicrophoneVolume, SideTone, SupportedDevice, VolumeLimiter};
 
-const STEELSERIES: u16 = 0x1038;
+const VID_STEELSERIES: u16 = 0x1038;
 
-const ARCTIS_NOVA_7: u16 = 0x2202;
-const ARCTIS_NOVA_7X: u16 = 0x2206;
-const ARCTIS_NOVA_7P: u16 = 0x220a;
+const PID_ARCTIS_NOVA_7: u16 = 0x2202;
+const PID_ARCTIS_NOVA_7X: u16 = 0x2206;
+const PID_ARCTIS_NOVA_7P: u16 = 0x220a;
 
-const SUPPORTED_VENDORS: &[u16] = &[STEELSERIES];
-const SUPPORTED_PRODUCTS: &[u16] = &[ARCTIS_NOVA_7, ARCTIS_NOVA_7X, ARCTIS_NOVA_7P];
-const REQUIRED_INTERFACE: i32 = 3;
+const USAGE_ID: u16 = 0x1;
+const NOTIFICATION_USAGE_PAGE: u16 = 0xFF00;
+const CONFIGURATION_USAGE_PAGE: u16 = 0xFFC0;
 
 const STATUS_BUF_SIZE: usize = 8;
 const READ_TIMEOUT: i32 = 500;
@@ -29,6 +29,87 @@ const HEADSET_CHARGING: u8 = 0x01;
 const BATTERY_MAX: u8 = 0x04;
 const BATTERY_MIN: u8 = 0x00;
 
+pub const ARCTIS_NOVA_7X: SupportedDevice = SupportedDevice {
+    name: "Steelseries Arctis Nova 7X",
+    required_interfaces: &[
+        Interface::new(NOTIFICATION_USAGE_PAGE , USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7X),
+        Interface::new(CONFIGURATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7X)
+    ],
+    open: ArctisNova7::open_xbox,
+};
+
+pub struct ArctisNova7 {
+    update_task: JoinHandle<()>,
+    config_channel: HidDevice,
+    name: &'static str,
+    connected: bool
+}
+
+impl ArctisNova7 {
+
+    async fn open(name: &'static str, pid: u16, interfaces: &HashMap<Interface, DeviceInfo>) -> DeviceResult<BoxedDevice> {
+        let notification_channel = interfaces
+            .get(&Interface::new(NOTIFICATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, pid))
+            .unwrap()
+            .open()
+            .await?;
+
+        let update_task = spawn(async move {
+            let mut buf = [0u8; 8];
+            loop {
+                notification_channel.read_input_report(&mut buf)
+                    .await
+                    .unwrap_or_else(|err| {
+                        println!("notification task: {}", err);
+                        0
+                    });
+                println!("{:?}", buf);
+            }
+        });
+
+        let config_channel = interfaces
+            .get(&Interface::new(CONFIGURATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, pid))
+            .unwrap()
+            .open()
+            .await?;
+
+        Ok(Box::new(Self {
+            update_task,
+            config_channel,
+            name,
+            connected: false,
+        }))
+    }
+
+    pub fn open_xbox(interfaces: &HashMap<Interface, DeviceInfo>) -> BoxedDeviceFuture {
+        Box::pin(Self::open(ARCTIS_NOVA_7X.name, PID_ARCTIS_NOVA_7X, interfaces))
+    }
+
+}
+
+impl Drop for ArctisNova7 {
+    fn drop(&mut self) {
+        self.update_task.abort();
+        println!("Drop");
+    }
+}
+
+impl Device for ArctisNova7 {
+    fn get_info(&self) -> &Info {
+        todo!()
+    }
+
+    fn is_connected(&self) -> bool {
+        self.connected
+    }
+
+    fn poll(&mut self) -> Result<Duration> {
+        todo!()
+    }
+}
+
+
+/*
 pub struct ArcticsNova7 {
     device: HidDevice,
     name: Info,
@@ -284,3 +365,4 @@ impl InactiveTime for ArcticsNova7 {
         Ok(())
     }
 }
+*/

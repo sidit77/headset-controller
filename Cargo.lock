@@ -1394,7 +1394,6 @@ dependencies = [
  "glow",
  "glutin",
  "glutin-tao",
- "hidapi",
  "ico",
  "notify-rust",
  "once_cell",
@@ -1430,19 +1429,6 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
-
-[[package]]
-name = "hidapi"
-version = "2.3.3"
-source = "git+https://github.com/sidit77/hidapi-rs.git#ba7c2c65dbb71f0757ffa80e56daa6d223eff7a8"
-dependencies = [
- "cc",
- "libc",
- "nix",
- "pkg-config",
- "udev",
- "windows-sys 0.48.0",
-]
 
 [[package]]
 name = "home"
@@ -1788,7 +1774,6 @@ dependencies = [
  "cfg-if",
  "libc",
  "memoffset 0.7.1",
- "pin-utils",
  "static_assertions",
 ]
 
