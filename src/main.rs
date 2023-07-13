@@ -1,5 +1,115 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
+use async_hid::DeviceInfo;
+use color_eyre::Result;
+use tracing::instrument;
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct Interface {
+    pub product_id: u16,
+    pub vendor_id: u16,
+    pub usage_id: u16,
+    pub usage_page: u16
+}
+
+impl Interface {
+    pub const fn new(usage_page: u16, usage_id: u16, vendor_id: u16, product_id: u16) -> Self {
+        Self { product_id, vendor_id, usage_id, usage_page }
+    }
+}
+
+impl From<&DeviceInfo> for Interface {
+    fn from(value: &DeviceInfo) -> Self {
+        Interface::new(value.usage_page, value.usage_id, value.vendor_id, value.product_id)
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct SupportedDevice {
+    name: &'static str,
+    required_interfaces: &'static [Interface]
+}
+
+impl Display for SupportedDevice {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name)
+    }
+}
+
+pub const ARCTIS_NOVA_X: SupportedDevice = SupportedDevice {
+    name: "Steelseries Arctis Nova X",
+    required_interfaces: &[
+        Interface::new(0xFFC0, 0x1, 0x1038, 0x2206),
+        Interface::new(0xFF00, 0x1, 0x1038, 0x2206)
+    ],
+};
+
+pub const DUMMY_DEVICE: SupportedDevice = SupportedDevice {
+    name: "Dummy Device",
+    required_interfaces: &[],
+};
+
+
+pub const SUPPORTED_DEVICES: &[SupportedDevice] = &[ARCTIS_NOVA_X, DUMMY_DEVICE];
+
+#[derive(Debug, Clone, Default)]
+pub struct DeviceManager {
+    interfaces: HashMap<Interface, DeviceInfo>,
+    devices: Vec<SupportedDevice>
+}
+
+impl DeviceManager {
+
+    pub async fn new() -> Result<Self> {
+        let mut result = Self::default();
+        result.refresh().await?;
+        Ok(result)
+    }
+
+    #[instrument(skip_all)]
+    pub async fn refresh(&mut self) -> Result<()> {
+        self.interfaces.clear();
+        self.interfaces.extend(DeviceInfo::enumerate()
+            .await?
+            .into_iter()
+            .map(|dev| (Interface::from(&dev), dev)));
+
+        self.devices.clear();
+        self.devices.extend(SUPPORTED_DEVICES
+            .iter()
+            .filter(|dev| dev
+                .required_interfaces
+                .iter()
+                .all(|i| self.interfaces.contains_key(i)))
+            .inspect(|dev| println!("Found {}", dev.name)));
+
+        Ok(())
+    }
+
+    pub fn supported_devices(&self) -> &Vec<SupportedDevice> {
+        &self.devices
+    }
+
+    //pub fn open(&self, supported: &SupportedDevice) -> Result<()> {
+    //    //supported.open(&self.api)
+    //    Ok(())
+    //}
+
+}
+
+#[pollster::main]
+async fn main() -> Result<()> {
+    let manager = DeviceManager::new().await?;
+    manager
+        .supported_devices()
+        .iter()
+        .for_each(|dev| println!("{}", dev));
+    Ok(())
+}
+
+/*
 mod audio;
 mod config;
 mod debouncer;
@@ -365,3 +475,4 @@ pub fn update_tray_tooltip(tray: &mut AppTray, device: &Option<BoxedDevice>) {
     }
     tracing::trace!("Updated tooltip");
 }
+*/
