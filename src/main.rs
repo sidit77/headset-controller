@@ -10,6 +10,7 @@ mod tray;
 mod ui;
 mod util;
 
+use std::ops::Not;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -25,7 +26,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 use crate::audio::AudioSystem;
-use crate::config::{log_file, Config, EqualizerConfig, HeadsetConfig};
+use crate::config::{log_file, Config, EqualizerConfig, HeadsetConfig, START_QUIET, CLOSE_IMMEDIATELY};
 use crate::debouncer::{Action, Debouncer};
 use crate::devices::{BatteryLevel, BoxedDevice, Device, DeviceManager};
 use crate::renderer::EguiWindow;
@@ -54,10 +55,9 @@ fn main() -> Result<()> {
 
     let mut tray = AppTray::new(&event_loop);
 
-    let mut window: Option<EguiWindow> = match std::env::args().any(|arg| arg.eq("--quiet")) {
-        true => None,
-        false => Some(EguiWindow::new(&event_loop))
-    };
+    let mut window: Option<EguiWindow> = START_QUIET
+        .not()
+        .then(|| EguiWindow::new(&event_loop));
 
     let mut next_device_poll = Instant::now();
     let mut debouncer = Debouncer::new();
@@ -84,7 +84,7 @@ fn main() -> Result<()> {
         {
             debouncer.force(Action::SaveConfig);
             window.take();
-            if cfg!(debug_assertions) {
+            if *CLOSE_IMMEDIATELY {
                 *control_flow = ControlFlow::Exit;
             }
         }

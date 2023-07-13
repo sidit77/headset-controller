@@ -9,7 +9,7 @@ use color_eyre::eyre::Error as EyreError;
 use hidapi::{DeviceInfo, HidApi, HidDevice};
 use tracing::instrument;
 
-use crate::config::CallAction;
+use crate::config::{CallAction, DUMMY_DEVICE};
 use crate::devices::arctis_nova_7::ArcticsNova7;
 use crate::devices::dummy::DummyDevice;
 
@@ -181,13 +181,6 @@ impl<T: From<(HidDevice, Info)> + Device + 'static> SupportedDevice for GenericH
 
 const SUPPORTED_DEVICES: &[CheckSupport] = &[ArcticsNova7::SUPPORT];
 
-fn get_dummy_device() -> Option<Box<dyn SupportedDevice>> {
-    match cfg!(debug_assertions) {
-        true => Some(Box::new(DummyDevice)),
-        false => None
-    }
-}
-
 pub struct DeviceManager {
     api: HidApi,
     devices: Vec<BoxedSupportedDevice>
@@ -207,7 +200,8 @@ impl DeviceManager {
         self.api
             .device_list()
             .flat_map(|info| SUPPORTED_DEVICES.iter().filter_map(|check| check(info)))
-            .chain(get_dummy_device())
+            .chain(DUMMY_DEVICE
+                .then::<Box<dyn SupportedDevice>, _>(|| Box::new(DummyDevice)))
             .for_each(|dev| {
                 tracing::debug!("Found {}", dev.name());
                 self.devices.push(dev);

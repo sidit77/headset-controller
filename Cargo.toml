@@ -21,10 +21,10 @@ color-eyre = "0.6"
 
 hidapi = { git = "https://github.com/sidit77/hidapi-rs.git", default-features = false, features = ["windows-native", "linux-native"] }
 # hidapi = "2.3"
-directories-next = "2.0"
-serde = { version = "1.0", features = ["derive"] }
+directories-next = "2"
+serde = { version = "1", features = ["derive"] }
 ron = "0.8"
-once_cell = "1.17"
+once_cell = "1"
 fixed-map = "0.9"
 
 egui = "0.22"
@@ -45,9 +45,9 @@ png = "0.17"
 
 [target."cfg(target_os = \"windows\")".dependencies]
 com-policy-config = "0.3"
-widestring = "1.0"
+widestring = "1"
 winreg = "0.50"
-dunce = "1.0"
+dunce = "1"
 
 [target."cfg(target_os = \"windows\")".dependencies.windows]
 version = "0.48"

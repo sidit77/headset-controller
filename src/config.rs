@@ -160,3 +160,7 @@ impl HeadsetConfig {
         &mut self.profiles[self.selected_profile_index as usize]
     }
 }
+
+pub static START_QUIET: Lazy<bool> = Lazy::new(|| std::env::args().any(|arg| arg.eq("--quiet")));
+pub static CLOSE_IMMEDIATELY: Lazy<bool> = Lazy::new(|| std::env::args().any(|arg| arg.eq("--close-on-quit")));
+pub static DUMMY_DEVICE: Lazy<bool> = Lazy::new(|| std::env::args().any(|arg| arg.eq("--dummy-device")));
