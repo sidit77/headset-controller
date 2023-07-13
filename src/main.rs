@@ -2,8 +2,14 @@
 
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
-use async_hid::DeviceInfo;
+use std::future::Future;
+use std::pin::Pin;
+use async_hid::{Device as HidDevice, DeviceInfo};
 use color_eyre::Result;
+use tokio::runtime::Builder;
+use tokio::signal::ctrl_c;
+use tokio::spawn;
+use tokio::task::JoinHandle;
 use tracing::instrument;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -29,7 +35,8 @@ impl From<&DeviceInfo> for Interface {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct SupportedDevice {
     name: &'static str,
-    required_interfaces: &'static [Interface]
+    required_interfaces: &'static [Interface],
+    open: fn(interfaces: &HashMap<Interface, DeviceInfo>) -> BoxedDeviceFuture
 }
 
 impl Display for SupportedDevice {
@@ -44,15 +51,16 @@ pub const ARCTIS_NOVA_X: SupportedDevice = SupportedDevice {
         Interface::new(0xFFC0, 0x1, 0x1038, 0x2206),
         Interface::new(0xFF00, 0x1, 0x1038, 0x2206)
     ],
+    open: ArctisNova::open_xbox,
 };
 
-pub const DUMMY_DEVICE: SupportedDevice = SupportedDevice {
-    name: "Dummy Device",
-    required_interfaces: &[],
-};
+//pub const DUMMY_DEVICE: SupportedDevice = SupportedDevice {
+//    name: "Dummy Device",
+//    required_interfaces: &[],
+//};
 
 
-pub const SUPPORTED_DEVICES: &[SupportedDevice] = &[ARCTIS_NOVA_X, DUMMY_DEVICE];
+pub const SUPPORTED_DEVICES: &[SupportedDevice] = &[ARCTIS_NOVA_X];
 
 #[derive(Debug, Clone, Default)]
 pub struct DeviceManager {
@@ -92,21 +100,108 @@ impl DeviceManager {
         &self.devices
     }
 
-    //pub fn open(&self, supported: &SupportedDevice) -> Result<()> {
-    //    //supported.open(&self.api)
-    //    Ok(())
-    //}
+    pub async fn open(&self, supported: &SupportedDevice) -> Result<BoxedDevice> {
+        println!("Opening {}", supported.name);
+        let dev = (supported.open)(&self.interfaces).await?;
 
+        Ok(dev)
+    }
 }
 
-#[pollster::main]
-async fn main() -> Result<()> {
-    let manager = DeviceManager::new().await?;
-    manager
-        .supported_devices()
-        .iter()
-        .for_each(|dev| println!("{}", dev));
-    Ok(())
+pub trait Device {
+    fn is_connected(&self) -> bool;
+}
+pub type BoxedDevice = Box<dyn Device>;
+pub type BoxedDeviceFuture<'a> = Pin<Box<dyn Future<Output=Result<BoxedDevice>> + 'a>>;
+
+const STEELSERIES: u16 = 0x1038;
+
+const PID_ARCTIS_NOVA_7: u16 = 0x2202;
+const PID_ARCTIS_NOVA_7X: u16 = 0x2206;
+const PID_ARCTIS_NOVA_7P: u16 = 0x220a;
+
+
+pub struct ArctisNova {
+    update_task: JoinHandle<()>,
+    config_channel: HidDevice,
+    name: &'static str,
+    connected: bool
+}
+
+impl ArctisNova {
+    
+    async fn open(name: &'static str, pid: u16, interfaces: &HashMap<Interface, DeviceInfo>) -> Result<BoxedDevice> {
+        let notification_channel = interfaces
+            .get(&Interface::new(0xFF00, 0x1, 0x1038, pid))
+            .unwrap()
+            .open()
+            .await?;
+
+        let update_task = spawn(async move {
+            let mut buf = [0u8; 8];
+            loop {
+                notification_channel.read_input_report(&mut buf)
+                    .await
+                    .unwrap_or_else(|err| {
+                        println!("notification task: {}", err);
+                        0
+                    });
+                println!("{:?}", buf);
+            }
+        });
+
+        let config_channel = interfaces
+            .get(&Interface::new(0xFFC0, 0x1, 0x1038, pid))
+            .unwrap()
+            .open()
+            .await?;
+        
+        Ok(Box::new(Self {
+            update_task,
+            config_channel,
+            name,
+            connected: false,
+        }))
+    }
+    
+    pub fn open_xbox(interfaces: &HashMap<Interface, DeviceInfo>) -> BoxedDeviceFuture {
+        Box::pin(Self::open("Steelseries Arctis Nova 7X", PID_ARCTIS_NOVA_7X, interfaces))
+    }
+    
+}
+
+impl Drop for ArctisNova {
+    fn drop(&mut self) {
+        self.update_task.abort();
+        println!("Drop");
+    }
+}
+
+impl Device for ArctisNova {
+    fn is_connected(&self) -> bool {
+        self.connected
+    }
+}
+
+
+
+fn main() -> Result<()> {
+    let runtime = Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+
+    runtime.block_on(async {
+        let manager = DeviceManager::new().await?;
+        let dev = manager
+            .supported_devices()
+            .first()
+            .unwrap();
+
+        let dev = manager.open(dev).await?;
+
+        ctrl_c().await?;
+        Ok(())
+    })
 }
 
 /*
