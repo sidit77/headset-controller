@@ -2,13 +2,15 @@ use std::sync::Arc;
 
 use async_hid::Device as HidDevice;
 use crossbeam_utils::atomic::AtomicCell;
+use futures_util::TryFutureExt;
 use tokio::spawn;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tracing::instrument;
+use crate::config::CallAction;
 
-use crate::devices::{BatteryLevel, BoxedDevice, BoxedDeviceFuture, ChatMix, ConfigAction, Device, DeviceResult, DeviceStrings, DeviceUpdate, Interface, InterfaceMap, SideTone, SupportedDevice, UpdateChannel};
-use crate::util::{AtomicCellExt, SenderExt};
+use crate::devices::{BatteryLevel, BluetoothConfig, BoxedDevice, BoxedDeviceFuture, ChatMix, ConfigAction, Device, DeviceResult, DeviceStrings, DeviceUpdate, Equalizer, InactiveTime, Interface, InterfaceMap, MicrophoneLight, MicrophoneVolume, SideTone, SupportedDevice, UpdateChannel, VolumeLimiter};
+use crate::util::{AtomicCellExt, SenderExt, VecExt};
 
 const VID_STEELSERIES: u16 = 0x1038;
 
@@ -175,12 +177,30 @@ async fn load_state(config_interface: &HidDevice) -> DeviceResult<State> {
 async fn configuration_handler(config_interface: HidDevice, events: UpdateChannel, mut config_requests: UnboundedReceiver<ConfigAction>) {
     while let Some(request) = config_requests.recv().await {
         tracing::debug!("Attempting apply config request: {:?}", request);
-        let result = match request {
-            ConfigAction::SetSideTone(level) => {
-                config_interface.write_output_report(&[0x00, 0x39, level]).await
-            }
+        let data = match request {
+            ConfigAction::SetSideTone(level) => vec![0x00, 0x39, level],
+            ConfigAction::SetMicrophoneVolume(level) => vec![0x00, 0x37, level],
+            ConfigAction::EnableVolumeLimiter(enabled) => vec![0x00, 0x3a, u8::from(enabled)],
+            ConfigAction::SetEqualizerLevels(mut levels) => {
+                levels.prepend([0x00, 0x33]);
+                levels
+            },
+            ConfigAction::SetBluetoothCallAction(action) => {
+                let v = match action {
+                    CallAction::Nothing => 0x00,
+                    CallAction::ReduceVolume => 0x01,
+                    CallAction::Mute => 0x02
+                };
+                vec![0x00, 0xb3, v]
+            },
+            ConfigAction::EnableAutoBluetoothActivation(enabled) => vec![0x00, 0xb2, u8::from(enabled)],
+            ConfigAction::SetMicrophoneLightStrength(level) => vec![0x00, 0xae, level],
+            ConfigAction::SetInactiveTime(minutes) => vec![0x00, 0xa3, minutes]
         };
-        result.unwrap_or_else(|err| events.send_log(DeviceUpdate::DeviceError(err)));
+        //TODO close the channel after a timeout
+        config_interface.write_output_report(&data)
+            .await
+            .unwrap_or_else(|err| events.send_log(DeviceUpdate::DeviceError(err)));
     }
     tracing::warn!("Request channel close unexpectedly");
 }
@@ -274,129 +294,6 @@ impl Device for ArctisNova7 {
     fn get_side_tone(&self) -> Option<&dyn SideTone> {
         Some(self)
     }
-}
-
-impl SideTone for ArctisNova7 {
-    fn levels(&self) -> u8 {
-        4
-    }
-
-    fn set_level(&self, level: u8) -> DeviceResult<()> {
-        assert!(level < SideTone::levels(self));
-        self.request_config_action(ConfigAction::SetSideTone(level));
-        Ok(())
-    }
-}
-
-/*
-pub struct ArcticsNova7 {
-    device: HidDevice,
-    name: Info,
-    last_chat_mix_adjustment: Option<Instant>,
-    connected: bool,
-    battery: BatteryLevel,
-    chat_mix: ChatMix
-}
-
-impl From<(HidDevice, Info)> for ArcticsNova7 {
-    fn from((device, info): (HidDevice, Info)) -> Self {
-        Self {
-            device,
-            name: info,
-            last_chat_mix_adjustment: None,
-            connected: false,
-            battery: BatteryLevel::Unknown,
-            chat_mix: Default::default()
-        }
-    }
-}
-
-impl ArcticsNova7 {
-    pub const SUPPORT: CheckSupport = |info| {
-        let supported = SUPPORTED_VENDORS.contains(&info.vendor_id())
-            && SUPPORTED_PRODUCTS.contains(&info.product_id())
-            && REQUIRED_INTERFACE == info.interface_number();
-        if supported {
-            Some(Box::new(GenericHidDevice::<ArcticsNova7>::new(info, "SteelSeries", "Arctis Nova 7")))
-        } else {
-            None
-        }
-    };
-}
-
-impl Device for ArcticsNova7 {
-    fn get_info(&self) -> &Info {
-        &self.name
-    }
-
-    fn is_connected(&self) -> bool {
-        self.connected
-    }
-
-    #[instrument(skip(self))]
-    fn poll(&mut self) -> Result<Duration> {
-        let mut report = [0u8; STATUS_BUF_SIZE];
-        self.device.write(&[0x00, 0xb0])?;
-        if self.device.read_timeout(&mut report, READ_TIMEOUT)? != STATUS_BUF_SIZE {
-            return Err(eyre!("Cannot read enough bytes"));
-        }
-
-        let prev_chat_mix = self.chat_mix;
-        self.chat_mix = ChatMix {
-            game: report[4],
-            chat: report[5]
-        };
-        match report[3] {
-            HEADSET_OFFLINE => {
-                self.connected = false;
-                self.battery = BatteryLevel::Unknown;
-                self.chat_mix = ChatMix::default();
-            }
-            HEADSET_CHARGING => {
-                self.connected = true;
-                self.battery = BatteryLevel::Charging;
-            }
-            _ => {
-                self.connected = true;
-                self.battery = BatteryLevel::Level({
-                    let level = report[2].clamp(BATTERY_MIN, BATTERY_MAX);
-                    (level - BATTERY_MIN) * (100 / (BATTERY_MAX - BATTERY_MIN))
-                });
-            }
-        }
-        if self.chat_mix != prev_chat_mix {
-            if self.last_chat_mix_adjustment.is_none() {
-                tracing::trace!("Increase polling rate");
-            }
-            self.last_chat_mix_adjustment = Some(Instant::now());
-        }
-        if self
-            .last_chat_mix_adjustment
-            .map(|i| i.elapsed() > Duration::from_secs(1))
-            .unwrap_or(false)
-        {
-            self.last_chat_mix_adjustment = None;
-            tracing::trace!("Decrease polling rate");
-        }
-
-        Ok(match self.connected {
-            true => match self.last_chat_mix_adjustment.is_some() {
-                true => Duration::from_millis(250),
-                false => Duration::from_millis(1000)
-            },
-            false => Duration::from_secs(4)
-        })
-    }
-
-    fn get_battery_status(&self) -> Option<BatteryLevel> {
-        Some(self.battery)
-    }
-    fn get_chat_mix(&self) -> Option<ChatMix> {
-        Some(self.chat_mix)
-    }
-    fn get_side_tone(&self) -> Option<&dyn SideTone> {
-        Some(self)
-    }
 
     fn get_mic_volume(&self) -> Option<&dyn MicrophoneVolume> {
         Some(self)
@@ -423,44 +320,36 @@ impl Device for ArcticsNova7 {
     }
 }
 
-impl SideTone for ArcticsNova7 {
+impl SideTone for ArctisNova7 {
     fn levels(&self) -> u8 {
         4
     }
 
-    #[instrument(skip(self))]
-    fn set_level(&self, level: u8) -> Result<()> {
-        tracing::debug!("Attempting to write new value to device!");
+    fn set_level(&self, level: u8) {
         assert!(level < SideTone::levels(self));
-        self.device.write(&[0x00, 0x39, level])?;
-        Ok(())
+        self.request_config_action(ConfigAction::SetSideTone(level));
     }
 }
 
-impl MicrophoneVolume for ArcticsNova7 {
+impl MicrophoneVolume for ArctisNova7 {
     fn levels(&self) -> u8 {
         8
     }
 
-    #[instrument(skip(self))]
-    fn set_level(&self, level: u8) -> Result<()> {
-        tracing::debug!("Attempting to write new value to device!");
+    fn set_level(&self, level: u8) {
         assert!(level < MicrophoneVolume::levels(self));
-        self.device.write(&[0x00, 0x37, level])?;
-        Ok(())
+        self.request_config_action(ConfigAction::SetMicrophoneVolume(level))
     }
 }
 
-impl VolumeLimiter for ArcticsNova7 {
-    #[instrument(skip(self))]
-    fn set_enabled(&self, enabled: bool) -> Result<()> {
-        tracing::debug!("Attempting to write new value to device!");
-        self.device.write(&[0x00, 0x3a, u8::from(enabled)])?;
-        Ok(())
+impl VolumeLimiter for ArctisNova7 {
+
+    fn set_enabled(&self, enabled: bool)  {
+        self.request_config_action(ConfigAction::EnableVolumeLimiter(enabled));
     }
 }
 
-impl Equalizer for ArcticsNova7 {
+impl Equalizer for ArctisNova7 {
     fn bands(&self) -> u8 {
         10
     }
@@ -482,66 +371,44 @@ impl Equalizer for ArcticsNova7 {
         ]
     }
 
-    #[instrument(skip(self))]
-    fn set_levels(&self, levels: &[u8]) -> Result<()> {
-        tracing::debug!("Attempting to write new value to device!");
+    fn set_levels(&self, levels: &[u8]) {
         assert_eq!(levels.len(), Equalizer::bands(self) as usize);
         assert!(
             levels
                 .iter()
                 .all(|i| *i >= self.base_level() - self.variance() && *i <= self.base_level() + self.variance())
         );
-        let mut msg = [0u8; 13];
-        msg[1] = 0x33;
-        msg[2..12].copy_from_slice(levels);
-        self.device.write(&msg)?;
-        Ok(())
+        self.request_config_action(ConfigAction::SetEqualizerLevels(levels.to_vec()));
     }
 }
 
-impl BluetoothConfig for ArcticsNova7 {
-    #[instrument(skip(self))]
-    fn set_call_action(&self, action: CallAction) -> Result<()> {
-        tracing::debug!("Attempting to write new value to device!");
-        let v = match action {
-            CallAction::Nothing => 0x00,
-            CallAction::ReduceVolume => 0x01,
-            CallAction::Mute => 0x02
-        };
-        self.device.write(&[0x00, 0xb3, v])?;
-        Ok(())
+impl BluetoothConfig for ArctisNova7 {
+
+    fn set_call_action(&self, action: CallAction){
+        self.request_config_action(ConfigAction::SetBluetoothCallAction(action));
     }
 
-    #[instrument(skip(self))]
-    fn set_auto_enabled(&self, enabled: bool) -> Result<()> {
-        tracing::debug!("Attempting to write new value to device!");
-        self.device.write(&[0x00, 0xb2, u8::from(enabled)])?;
-        Ok(())
+    fn set_auto_enabled(&self, enabled: bool) {
+        self.request_config_action(ConfigAction::EnableAutoBluetoothActivation(enabled));
     }
 }
 
-impl MicrophoneLight for ArcticsNova7 {
+impl MicrophoneLight for ArctisNova7 {
     fn levels(&self) -> u8 {
         4
     }
 
-    #[instrument(skip(self))]
-    fn set_light_strength(&self, level: u8) -> Result<()> {
+    fn set_light_strength(&self, level: u8){
         assert!(level < MicrophoneLight::levels(self));
-        tracing::debug!("Attempting to write new value to device!");
-        self.device.write(&[0x00, 0xae, level])?;
-        Ok(())
+        self.request_config_action(ConfigAction::SetMicrophoneLightStrength(level));
     }
 }
 
-impl InactiveTime for ArcticsNova7 {
-    #[instrument(skip(self))]
-    fn set_inactive_time(&self, minutes: u8) -> Result<()> {
+impl InactiveTime for ArctisNova7 {
+    fn set_inactive_time(&self, minutes: u8) {
         assert!(minutes > 0);
-        tracing::debug!("Attempting to write new value to device!");
         //This should be correct, but I'm honestly to scared to test it
-        //self.device.write(&[0x00, 0xa3, minutes])?;
-        Ok(())
+        //self.request_config_action(ConfigAction::SetInactiveTime(minutes));
+        let _ = ConfigAction::SetInactiveTime(minutes);
     }
 }
-*/

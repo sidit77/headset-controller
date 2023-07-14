@@ -192,8 +192,16 @@ impl DeviceManager {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
+#[non_exhaustive]
 enum ConfigAction {
-    SetSideTone(u8)
+    SetSideTone(u8),
+    EnableVolumeLimiter(bool),
+    SetMicrophoneVolume(u8),
+    SetEqualizerLevels(Vec<u8>),
+    SetBluetoothCallAction(CallAction),
+    EnableAutoBluetoothActivation(bool),
+    SetMicrophoneLightStrength(u8),
+    SetInactiveTime(u8)
 }
 
 pub type DeviceResult<T> = Result<T, EyreError>;
@@ -238,16 +246,16 @@ pub trait Device {
 
 pub trait SideTone {
     fn levels(&self) -> u8;
-    fn set_level(&self, level: u8) -> DeviceResult<()>;
+    fn set_level(&self, level: u8);
 }
 
 pub trait VolumeLimiter {
-    fn set_enabled(&self, enabled: bool) -> DeviceResult<()>;
+    fn set_enabled(&self, enabled: bool);
 }
 
 pub trait MicrophoneVolume {
     fn levels(&self) -> u8;
-    fn set_level(&self, level: u8) -> DeviceResult<()>;
+    fn set_level(&self, level: u8);
 }
 
 pub trait Equalizer {
@@ -255,21 +263,21 @@ pub trait Equalizer {
     fn base_level(&self) -> u8;
     fn variance(&self) -> u8;
     fn presets(&self) -> &[(&str, &[u8])];
-    fn set_levels(&self, levels: &[u8]) -> DeviceResult<()>;
+    fn set_levels(&self, levels: &[u8]);
 }
 
 pub trait BluetoothConfig {
-    fn set_call_action(&self, action: CallAction) -> DeviceResult<()>;
-    fn set_auto_enabled(&self, enabled: bool) -> DeviceResult<()>;
+    fn set_call_action(&self, action: CallAction);
+    fn set_auto_enabled(&self, enabled: bool);
 }
 
 pub trait MicrophoneLight {
     fn levels(&self) -> u8;
-    fn set_light_strength(&self, level: u8) -> DeviceResult<()>;
+    fn set_light_strength(&self, level: u8);
 }
 
 pub trait InactiveTime {
-    fn set_inactive_time(&self, minutes: u8) -> DeviceResult<()>;
+    fn set_inactive_time(&self, minutes: u8);
 }
 
 /*

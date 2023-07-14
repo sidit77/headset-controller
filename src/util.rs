@@ -94,3 +94,16 @@ impl<T> SenderExt<T> for EventLoopProxy<T> {
             .unwrap_or_else(|_| tracing::warn!("Could not send message because the receiver is closed"))
     }
 }
+
+pub trait VecExt<T> {
+    fn prepend<I: IntoIterator<Item = T>>(&mut self, iter: I);
+}
+
+impl<T> VecExt<T> for Vec<T> {
+    fn prepend<I: IntoIterator<Item=T>>(&mut self, iter: I) {
+        let prev = self.len();
+        self.extend(iter);
+        let offset = self.len() - prev;
+        self.rotate_right(offset);
+    }
+}

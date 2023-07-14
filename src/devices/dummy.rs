@@ -73,9 +73,8 @@ impl SideTone for DummyDevice {
     }
 
     #[instrument(skip(self))]
-    fn set_level(&self, level: u8) -> DeviceResult<()> {
+    fn set_level(&self, level: u8) {
         tracing::info!("Updated sidetone");
-        Ok(())
     }
 }
 
@@ -85,9 +84,8 @@ impl MicrophoneVolume for DummyDevice {
     }
 
     #[instrument(skip(self))]
-    fn set_level(&self, level: u8) -> DeviceResult<()> {
+    fn set_level(&self, level: u8) {
         tracing::info!("Updated microphone volume");
-        Ok(())
     }
 }
 
@@ -97,9 +95,8 @@ impl MicrophoneLight for DummyDevice {
     }
 
     #[instrument(skip(self))]
-    fn set_light_strength(&self, level: u8) -> DeviceResult<()> {
+    fn set_light_strength(&self, level: u8) {
         tracing::info!("Updated microphone light");
-        Ok(())
     }
 }
 
@@ -121,38 +118,33 @@ impl Equalizer for DummyDevice {
     }
 
     #[instrument(skip(self))]
-    fn set_levels(&self, levels: &[u8]) -> DeviceResult<()> {
+    fn set_levels(&self, levels: &[u8]) {
         tracing::info!("Updated equalizer");
-        Ok(())
     }
 }
 
 impl VolumeLimiter for DummyDevice {
     #[instrument(skip(self))]
-    fn set_enabled(&self, enabled: bool) -> DeviceResult<()> {
+    fn set_enabled(&self, enabled: bool) {
         tracing::info!("Updated volume limiter");
-        Ok(())
     }
 }
 
 impl BluetoothConfig for DummyDevice {
     #[instrument(skip(self))]
-    fn set_call_action(&self, action: CallAction) -> DeviceResult<()> {
+    fn set_call_action(&self, action: CallAction) {
         tracing::info!("Updated call action");
-        Ok(())
     }
 
     #[instrument(skip(self))]
-    fn set_auto_enabled(&self, enabled: bool) -> DeviceResult<()> {
+    fn set_auto_enabled(&self, enabled: bool) {
         tracing::info!("Updated auto enable");
-        Ok(())
     }
 }
 
 impl InactiveTime for DummyDevice {
     #[instrument(skip(self))]
-    fn set_inactive_time(&self, minutes: u8) -> DeviceResult<()> {
+    fn set_inactive_time(&self, minutes: u8) {
         tracing::info!("Updated inactive time");
-        Ok(())
     }
 }

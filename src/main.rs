@@ -293,9 +293,7 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
             Action::UpdateSideTone => {
                 if let Some(sidetone) = device.get_side_tone() {
                     let _span = tracing::info_span!("sidetone").entered();
-                    sidetone
-                        .set_level(headset.selected_profile().side_tone)
-                        .unwrap_or_else(|err| tracing::warn!("Can not apply side tone: {:?}", err));
+                    sidetone.set_level(headset.selected_profile().side_tone);
                 }
             }
             Action::UpdateEqualizer => {
@@ -310,57 +308,43 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
                             .to_vec(),
                         EqualizerConfig::Custom(levels) => levels
                     };
-                    equalizer
-                        .set_levels(&levels)
-                        .unwrap_or_else(|err| tracing::warn!("Could not apply equalizer: {:?}", err));
+                    equalizer.set_levels(&levels);
                 }
             }
             Action::UpdateMicrophoneVolume => {
                 if let Some(mic_volume) = device.get_mic_volume() {
                     let _span = tracing::info_span!("mic_volume").entered();
-                    mic_volume
-                        .set_level(headset.selected_profile().microphone_volume)
-                        .unwrap_or_else(|err| tracing::warn!("Could not apply microphone volume: {:?}", err));
+                    mic_volume.set_level(headset.selected_profile().microphone_volume);
                 }
             }
             Action::UpdateVolumeLimit => {
                 if let Some(volume_limiter) = device.get_volume_limiter() {
                     let _span = tracing::info_span!("volume_limiter").entered();
-                    volume_limiter
-                        .set_enabled(headset.selected_profile().volume_limiter)
-                        .unwrap_or_else(|err| tracing::warn!("Could not apply volume limited: {:?}", err));
+                    volume_limiter.set_enabled(headset.selected_profile().volume_limiter);
                 }
             }
             Action::UpdateInactiveTime => {
                 if let Some(inactive_time) = device.get_inactive_time() {
                     let _span = tracing::info_span!("inactive time").entered();
-                    inactive_time
-                        .set_inactive_time(headset.inactive_time)
-                        .unwrap_or_else(|err| tracing::warn!("Could not apply inactive time: {:?}", err));
+                    inactive_time.set_inactive_time(headset.inactive_time);
                 }
             }
             Action::UpdateMicrophoneLight => {
                 if let Some(mic_light) = device.get_mic_light() {
                     let _span = tracing::info_span!("mic_light").entered();
-                    mic_light
-                        .set_light_strength(headset.mic_light)
-                        .unwrap_or_else(|err| tracing::warn!("Could not apply microphone light: {:?}", err));
+                    mic_light.set_light_strength(headset.mic_light);
                 }
             }
             Action::UpdateBluetoothCall => {
                 if let Some(bluetooth_config) = device.get_bluetooth_config() {
                     let _span = tracing::info_span!("bluetooth").entered();
-                    bluetooth_config
-                        .set_auto_enabled(headset.auto_enable_bluetooth)
-                        .unwrap_or_else(|err| tracing::warn!("Could not set bluetooth auto enabled: {:?}", err));
+                    bluetooth_config.set_auto_enabled(headset.auto_enable_bluetooth);
                 }
             }
             Action::UpdateAutoBluetooth => {
                 if let Some(bluetooth_config) = device.get_bluetooth_config() {
                     let _span = tracing::info_span!("bluetooth").entered();
-                    bluetooth_config
-                        .set_call_action(headset.bluetooth_call)
-                        .unwrap_or_else(|err| tracing::warn!("Could not set call action: {:?}", err));
+                    bluetooth_config.set_call_action(headset.bluetooth_call);
                 }
             }
             _ => tracing::warn!("{:?} is not related to the device", action)
