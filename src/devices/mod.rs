@@ -3,13 +3,11 @@ mod arctis_nova_7;
 
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
-use std::future::{Future, ready};
+use std::future::Future;
 use std::pin::Pin;
 use async_hid::DeviceInfo;
 
 use color_eyre::eyre::Error as EyreError;
-use futures_util::stream::iter;
-use futures_util::{TryFutureExt, StreamExt, TryStreamExt};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::instrument;
 
@@ -18,6 +16,7 @@ use crate::devices::arctis_nova_7::{ARCTIS_NOVA_7X};
 //use crate::devices::dummy::DummyDevice;
 
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq)]
+#[repr(u16)]
 pub enum BatteryLevel {
     #[default]
     Unknown,

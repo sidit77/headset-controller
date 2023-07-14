@@ -6,7 +6,6 @@ mod util;
 
 use color_eyre::Result;
 use tokio::runtime::Builder;
-use tokio::signal::ctrl_c;
 use tokio::sync::mpsc::unbounded_channel;
 use crate::devices::DeviceManager;
 
@@ -27,9 +26,13 @@ fn main() -> Result<()> {
             .unwrap();
 
         let dev = manager.open(dev, sender.clone()).await?;
-
-        while let Some(msg) = receiver.recv().await {
-            println!("{:?}", msg);
+        println!("{:?}", dev.is_connected());
+        println!("{:?}", dev.get_battery_status());
+        println!("{:?}", dev.get_chat_mix());
+        while let Some(_) = receiver.recv().await {
+            println!("{:?}", dev.is_connected());
+            println!("{:?}", dev.get_battery_status());
+            println!("{:?}", dev.get_chat_mix());
         }
         Ok(())
     })

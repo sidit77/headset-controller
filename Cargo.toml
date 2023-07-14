@@ -23,6 +23,7 @@ color-eyre = "0.6"
 async-hid = { path = "../async-hid"}
 tokio = { version = "1", features = ["full"]}
 futures-util = "0.3"
+crossbeam-utils = "0.8"
 # hidapi = "2.3"
 directories-next = "2"
 serde = { version = "1", features = ["derive"] }

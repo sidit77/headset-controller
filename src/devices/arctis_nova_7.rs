@@ -1,15 +1,12 @@
-use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::sync::Arc;
 
-use color_eyre::eyre::eyre;
 use tokio::task::JoinHandle;
 use tracing::instrument;
-use async_hid::{Device as HidDevice, DeviceInfo};
+use async_hid::{Device as HidDevice};
+use crossbeam_utils::atomic::AtomicCell;
 use tokio::spawn;
-use tokio::sync::mpsc::UnboundedSender;
 
-use crate::config::CallAction;
-use crate::devices::{BatteryLevel, BluetoothConfig, BoxedDevice, BoxedDeviceFuture, ChatMix, Device, DeviceResult as Result, DeviceResult, DeviceUpdate, Equalizer, InactiveTime, Interface, InterfaceMap, MicrophoneLight, MicrophoneVolume, SideTone, SupportedDevice, UpdateChannel, VolumeLimiter};
+use crate::devices::{BatteryLevel, BoxedDevice, BoxedDeviceFuture, ChatMix, Device, DeviceResult, DeviceUpdate, Interface, InterfaceMap, SupportedDevice, UpdateChannel};
 
 const VID_STEELSERIES: u16 = 0x1038;
 
@@ -21,15 +18,6 @@ const USAGE_ID: u16 = 0x1;
 const NOTIFICATION_USAGE_PAGE: u16 = 0xFF00;
 const CONFIGURATION_USAGE_PAGE: u16 = 0xFFC0;
 
-const STATUS_BUF_SIZE: usize = 8;
-const READ_TIMEOUT: i32 = 500;
-
-const HEADSET_OFFLINE: u8 = 0x00;
-const HEADSET_CHARGING: u8 = 0x01;
-
-const BATTERY_MAX: u8 = 0x04;
-const BATTERY_MIN: u8 = 0x00;
-
 pub const ARCTIS_NOVA_7X: SupportedDevice = SupportedDevice {
     name: "Steelseries Arctis Nova 7X",
     required_interfaces: &[
@@ -39,49 +27,80 @@ pub const ARCTIS_NOVA_7X: SupportedDevice = SupportedDevice {
     open: ArctisNova7::open_xbox,
 };
 
+#[derive(Default, Debug, Copy, Clone, Eq, PartialEq)]
+#[repr(u8)]
+enum PowerState {
+    #[default]
+    Offline,
+    Charging,
+    Discharging
+}
+
+impl PowerState {
+    fn from_u8(byte: u8) -> Self {
+        match byte {
+            0x0 => Self::Offline,
+            0x1 => Self::Charging,
+            0x3 => Self::Discharging,
+            _ => Self::default()
+        }
+    }
+}
+
+#[derive(Default, Copy, Clone, Eq, PartialEq)]
+#[repr(align(8))] //So that AtomicCell<State> becomes lock-free
+struct State {
+    power_state: PowerState,
+    battery: u8,
+    chat_mix: ChatMix,
+}
+
+impl State {
+    fn is_connected(self) -> bool {
+        self.power_state != PowerState::Offline
+    }
+    fn battery(self) -> BatteryLevel {
+        match self.power_state {
+            PowerState::Offline => BatteryLevel::Unknown,
+            PowerState::Charging => BatteryLevel::Charging,
+            PowerState::Discharging => BatteryLevel::Level(self.battery)
+        }
+    }
+
+}
+
 pub struct ArctisNova7 {
     update_task: JoinHandle<()>,
     config_channel: HidDevice,
     name: &'static str,
-    connected: bool
+    state: Arc<AtomicCell<State>>
 }
 
 impl ArctisNova7 {
 
     async fn open(name: &'static str, pid: u16, update_channel: UpdateChannel, interfaces: &InterfaceMap) -> DeviceResult<BoxedDevice> {
-        let notification_channel = interfaces
-            .get(&Interface::new(NOTIFICATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, pid))
-            .unwrap()
-            .open()
-            .await?;
-
-        let update_task = {
-            let update_channel = update_channel.clone();
-            spawn(async move {
-                let mut buf = [0u8; 8];
-                loop {
-                    notification_channel.read_input_report(&mut buf)
-                        .await
-                        .unwrap_or_else(|err| {
-                            println!("notification task: {}", err);
-                            0
-                        });
-                    update_channel.send(DeviceUpdate::ConnectionStatusChanged).unwrap();
-                }
-            })
-        };
-
+        debug_assert!(AtomicCell::<State>::is_lock_free());
         let config_channel = interfaces
             .get(&Interface::new(CONFIGURATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, pid))
             .unwrap()
             .open()
             .await?;
 
+        let state = Arc::new(AtomicCell::new(load_state(&config_channel).await?));
+
+        let notification_interface = interfaces
+            .get(&Interface::new(NOTIFICATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, pid))
+            .unwrap()
+            .open()
+            .await?;
+
+        let update_task = spawn(listen_for_updates(notification_interface, update_channel.clone(), state.clone()));
+
         Ok(Box::new(Self {
             update_task,
             config_channel,
             name,
-            connected: false,
+            state,
         }))
     }
 
@@ -89,6 +108,85 @@ impl ArctisNova7 {
         Box::pin(Self::open(ARCTIS_NOVA_7X.name, PID_ARCTIS_NOVA_7X, update_channel, interfaces))
     }
 
+}
+
+const STATUS_BUF_SIZE: usize = 8;
+
+#[instrument(skip_all)]
+async fn load_state(config_interface: &HidDevice) -> DeviceResult<State> {
+    let mut state = State::default();
+    config_interface.write_output_report(&[0x0, 0xb0]).await?;
+    let mut buffer = [0u8; STATUS_BUF_SIZE];
+    //TODO add a timeout
+    let size = config_interface.read_input_report(&mut buffer).await?;
+    debug_assert_eq!(size, buffer.len());
+
+    state.power_state = PowerState::from_u8(buffer[4]);
+    state.battery = (state.power_state == PowerState::Discharging)
+        .then(|| normalize_battery_level(buffer[3]))
+        .unwrap_or_default();
+    state.chat_mix = (state.power_state != PowerState::Offline)
+        .then_some(ChatMix { game: buffer[5], chat: buffer[6] })
+        .unwrap_or_default();
+
+    Ok(state)
+}
+
+#[instrument(skip_all)]
+async fn listen_for_updates(notification_interface: HidDevice, events: UpdateChannel, state: Arc<AtomicCell<State>>) {
+    let mut buf = [0u8; STATUS_BUF_SIZE];
+    loop {
+        match notification_interface.read_input_report(&mut buf).await {
+            Ok(size) => {
+                debug_assert_eq!(size, buf.len());
+                if let Some(update) = parse_status_update(&buf[1..]) {
+                    while {
+                        let previous_state = state.load();
+                        let mut current_state = previous_state;
+                        match update {
+                            StatusUpdate::PowerState(ps) => current_state.power_state = ps,
+                            StatusUpdate::Battery(level) => current_state.battery = level,
+                            StatusUpdate::ChatMix(mix) => current_state.chat_mix = mix
+                        }
+                        state.compare_exchange(previous_state, current_state).is_err()
+                    } { tracing::trace!("compare exchange failed!") }
+
+                    events.send(DeviceUpdate::ConnectionStatusChanged).unwrap();
+                }
+            }
+            Err(err) => println!("notification task: {}", err),
+        }
+
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+enum StatusUpdate {
+    PowerState(PowerState),
+    Battery(u8),
+    ChatMix(ChatMix)
+}
+
+fn parse_status_update(data: &[u8]) -> Option<StatusUpdate> {
+    const POWER_STATE_CHANGED: u8 = 0xbb;
+    const BATTERY_LEVEL_CHANGED: u8 = 0xb7;
+    const CHAT_MIX_CHANGED: u8 = 0x45;
+    match data[0] {
+        CHAT_MIX_CHANGED => Some(StatusUpdate::ChatMix(ChatMix {
+            game: data[1],
+            chat: data[2],
+        })),
+        POWER_STATE_CHANGED => Some(StatusUpdate::PowerState(PowerState::from_u8(data[1]))),
+        BATTERY_LEVEL_CHANGED => Some(StatusUpdate::Battery(normalize_battery_level(data[1]))),
+        _ => None
+    }
+}
+
+fn normalize_battery_level(byte: u8) -> u8 {
+    const BATTERY_MAX: u8 = 0x04;
+    const BATTERY_MIN: u8 = 0x00;
+    let level = byte.clamp(BATTERY_MIN, BATTERY_MAX);
+    (level - BATTERY_MIN) * (100 / (BATTERY_MAX - BATTERY_MIN))
 }
 
 impl Drop for ArctisNova7 {
@@ -105,9 +203,17 @@ impl Device for ArctisNova7 {
     }
 
     fn is_connected(&self) -> bool {
-        self.connected
+        self.state.load().is_connected()
     }
 
+    fn get_battery_status(&self) -> Option<BatteryLevel> {
+        Some(self.state.load().battery())
+
+    }
+
+    fn get_chat_mix(&self) -> Option<ChatMix> {
+        Some(self.state.load().chat_mix)
+    }
 }
 
 

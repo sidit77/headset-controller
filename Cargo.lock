@@ -1384,6 +1384,7 @@ dependencies = [
  "async-hid",
  "color-eyre",
  "com-policy-config",
+ "crossbeam-utils",
  "directories-next",
  "dunce",
  "egui",
