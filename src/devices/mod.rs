@@ -3,12 +3,14 @@ mod arctis_nova_7;
 
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
-use std::future::Future;
+use std::future::{Future, ready};
 use std::pin::Pin;
-use std::time::Duration;
 use async_hid::DeviceInfo;
 
 use color_eyre::eyre::Error as EyreError;
+use futures_util::stream::iter;
+use futures_util::{TryFutureExt, StreamExt, TryStreamExt};
+use tokio::sync::mpsc::UnboundedSender;
 use tracing::instrument;
 
 use crate::config::{CallAction};
@@ -101,11 +103,13 @@ impl From<&DeviceInfo> for Interface {
     }
 }
 
+pub type InterfaceMap = HashMap<Interface, DeviceInfo>;
+pub type UpdateChannel = UnboundedSender<DeviceUpdate>;
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct SupportedDevice {
     name: &'static str,
     required_interfaces: &'static [Interface],
-    open: fn(interfaces: &HashMap<Interface, DeviceInfo>) -> BoxedDeviceFuture
+    open: fn(channel: UpdateChannel, interfaces: &InterfaceMap) -> BoxedDeviceFuture
 }
 
 impl Display for SupportedDevice {
@@ -114,28 +118,15 @@ impl Display for SupportedDevice {
     }
 }
 
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct Info {
-    pub manufacturer: String,
-    pub product: String,
-    pub name: String
-}
-
-impl Display for Info {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.name)
-    }
+#[derive(Debug, Clone)]
+pub enum DeviceUpdate {
+    ConnectionStatusChanged
 }
 
 pub trait Device {
-    fn get_info(&self) -> &Info;
+    fn name(&self) -> &str;
     fn is_connected(&self) -> bool;
-    fn poll(&mut self) -> DeviceResult<Duration>;
 
-    fn name(&self) -> &str {
-        &self.get_info().name
-    }
     fn get_battery_status(&self) -> Option<BatteryLevel> {
         None
     }
@@ -171,7 +162,7 @@ pub const SUPPORTED_DEVICES: &[SupportedDevice] = &[ARCTIS_NOVA_7X];
 
 #[derive(Debug, Clone, Default)]
 pub struct DeviceManager {
-    interfaces: HashMap<Interface, DeviceInfo>,
+    interfaces: InterfaceMap,
     devices: Vec<SupportedDevice>
 }
 
@@ -207,11 +198,29 @@ impl DeviceManager {
         &self.devices
     }
 
-    pub async fn open(&self, supported: &SupportedDevice) -> DeviceResult<BoxedDevice> {
+    pub async fn open(&self, supported: &SupportedDevice, update_channel: UpdateChannel) -> DeviceResult<BoxedDevice> {
         println!("Opening {}", supported.name);
-        let dev = (supported.open)(&self.interfaces).await?;
+        let dev = (supported.open)(update_channel, &self.interfaces).await?;
 
         Ok(dev)
+    }
+
+    #[instrument(skip(self))]
+    pub async fn find_preferred_device(&self, preference: &Option<String>, update_channel: UpdateChannel) -> Option<BoxedDevice> {
+        let device_iter = preference
+            .iter()
+            .flat_map(|pref| self
+                .devices
+                .iter()
+                .filter(move |dev| dev.name == pref))
+            .chain(self.devices.iter());
+        for device in device_iter {
+            match self.open(device, update_channel.clone()).await {
+                Ok(dev) => return Some(dev),
+                Err(err) => tracing::error!("Failed to open device: {:?}", err)
+            }
+        }
+        None
     }
 }
 

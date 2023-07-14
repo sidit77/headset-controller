@@ -22,6 +22,7 @@ color-eyre = "0.6"
 #hidapi = { git = "https://github.com/sidit77/hidapi-rs.git", default-features = false, features = ["windows-native", "linux-native"] }
 async-hid = { path = "../async-hid"}
 tokio = { version = "1", features = ["full"]}
+futures-util = "0.3"
 # hidapi = "2.3"
 directories-next = "2"
 serde = { version = "1", features = ["derive"] }

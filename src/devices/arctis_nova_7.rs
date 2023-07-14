@@ -6,9 +6,10 @@ use tokio::task::JoinHandle;
 use tracing::instrument;
 use async_hid::{Device as HidDevice, DeviceInfo};
 use tokio::spawn;
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::config::CallAction;
-use crate::devices::{BatteryLevel, BluetoothConfig, BoxedDevice, BoxedDeviceFuture, ChatMix, Device, DeviceResult as Result, DeviceResult, Equalizer, InactiveTime, Info, Interface, MicrophoneLight, MicrophoneVolume, SideTone, SupportedDevice, VolumeLimiter};
+use crate::devices::{BatteryLevel, BluetoothConfig, BoxedDevice, BoxedDeviceFuture, ChatMix, Device, DeviceResult as Result, DeviceResult, DeviceUpdate, Equalizer, InactiveTime, Interface, InterfaceMap, MicrophoneLight, MicrophoneVolume, SideTone, SupportedDevice, UpdateChannel, VolumeLimiter};
 
 const VID_STEELSERIES: u16 = 0x1038;
 
@@ -47,25 +48,28 @@ pub struct ArctisNova7 {
 
 impl ArctisNova7 {
 
-    async fn open(name: &'static str, pid: u16, interfaces: &HashMap<Interface, DeviceInfo>) -> DeviceResult<BoxedDevice> {
+    async fn open(name: &'static str, pid: u16, update_channel: UpdateChannel, interfaces: &InterfaceMap) -> DeviceResult<BoxedDevice> {
         let notification_channel = interfaces
             .get(&Interface::new(NOTIFICATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, pid))
             .unwrap()
             .open()
             .await?;
 
-        let update_task = spawn(async move {
-            let mut buf = [0u8; 8];
-            loop {
-                notification_channel.read_input_report(&mut buf)
-                    .await
-                    .unwrap_or_else(|err| {
-                        println!("notification task: {}", err);
-                        0
-                    });
-                println!("{:?}", buf);
-            }
-        });
+        let update_task = {
+            let update_channel = update_channel.clone();
+            spawn(async move {
+                let mut buf = [0u8; 8];
+                loop {
+                    notification_channel.read_input_report(&mut buf)
+                        .await
+                        .unwrap_or_else(|err| {
+                            println!("notification task: {}", err);
+                            0
+                        });
+                    update_channel.send(DeviceUpdate::ConnectionStatusChanged).unwrap();
+                }
+            })
+        };
 
         let config_channel = interfaces
             .get(&Interface::new(CONFIGURATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, pid))
@@ -81,8 +85,8 @@ impl ArctisNova7 {
         }))
     }
 
-    pub fn open_xbox(interfaces: &HashMap<Interface, DeviceInfo>) -> BoxedDeviceFuture {
-        Box::pin(Self::open(ARCTIS_NOVA_7X.name, PID_ARCTIS_NOVA_7X, interfaces))
+    pub fn open_xbox(update_channel: UpdateChannel, interfaces: &InterfaceMap) -> BoxedDeviceFuture {
+        Box::pin(Self::open(ARCTIS_NOVA_7X.name, PID_ARCTIS_NOVA_7X, update_channel, interfaces))
     }
 
 }
@@ -95,17 +99,15 @@ impl Drop for ArctisNova7 {
 }
 
 impl Device for ArctisNova7 {
-    fn get_info(&self) -> &Info {
-        todo!()
+
+    fn name(&self) -> &str {
+        self.name
     }
 
     fn is_connected(&self) -> bool {
         self.connected
     }
 
-    fn poll(&mut self) -> Result<Duration> {
-        todo!()
-    }
 }
 
 

@@ -7,6 +7,7 @@ mod util;
 use color_eyre::Result;
 use tokio::runtime::Builder;
 use tokio::signal::ctrl_c;
+use tokio::sync::mpsc::unbounded_channel;
 use crate::devices::DeviceManager;
 
 
@@ -16,6 +17,8 @@ fn main() -> Result<()> {
         .enable_all()
         .build()?;
 
+    let (sender, mut receiver) = unbounded_channel();
+
     runtime.block_on(async {
         let manager = DeviceManager::new().await?;
         let dev = manager
@@ -23,9 +26,11 @@ fn main() -> Result<()> {
             .first()
             .unwrap();
 
-        let dev = manager.open(dev).await?;
+        let dev = manager.open(dev, sender.clone()).await?;
 
-        ctrl_c().await?;
+        while let Some(msg) = receiver.recv().await {
+            println!("{:?}", msg);
+        }
         Ok(())
     })
 }
