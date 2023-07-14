@@ -19,8 +19,10 @@ fn create_dummy(_: UpdateChannel, _: &InterfaceMap) -> BoxedDeviceFuture {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct DummyDevice;
 
-
 impl Device for DummyDevice {
+    fn strings(&self) -> DeviceStrings {
+        DUMMY_DEVICE.strings
+    }
 
     fn is_connected(&self) -> bool {
         true
@@ -60,10 +62,6 @@ impl Device for DummyDevice {
 
     fn get_mic_light(&self) -> Option<&dyn MicrophoneLight> {
         Some(self)
-    }
-
-    fn strings(&self) -> DeviceStrings {
-        DUMMY_DEVICE.strings
     }
 }
 

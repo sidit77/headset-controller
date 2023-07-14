@@ -1,4 +1,5 @@
 use std::io::{Error, ErrorKind, Write};
+
 use crossbeam_utils::atomic::AtomicCell;
 use tao::event_loop::EventLoopProxy;
 
@@ -100,7 +101,7 @@ pub trait VecExt<T> {
 }
 
 impl<T> VecExt<T> for Vec<T> {
-    fn prepend<I: IntoIterator<Item=T>>(&mut self, iter: I) {
+    fn prepend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         let prev = self.len();
         self.extend(iter);
         let offset = self.len() - prev;

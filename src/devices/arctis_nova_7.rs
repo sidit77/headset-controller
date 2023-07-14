@@ -2,14 +2,13 @@ use std::sync::Arc;
 
 use async_hid::Device as HidDevice;
 use crossbeam_utils::atomic::AtomicCell;
-use futures_util::TryFutureExt;
 use tokio::spawn;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tracing::instrument;
-use crate::config::CallAction;
 
-use crate::devices::{BatteryLevel, BluetoothConfig, BoxedDevice, BoxedDeviceFuture, ChatMix, ConfigAction, Device, DeviceResult, DeviceStrings, DeviceUpdate, Equalizer, InactiveTime, Interface, InterfaceMap, MicrophoneLight, MicrophoneVolume, SideTone, SupportedDevice, UpdateChannel, VolumeLimiter};
+use crate::config::CallAction;
+use crate::devices::*;
 use crate::util::{AtomicCellExt, SenderExt, VecExt};
 
 const VID_STEELSERIES: u16 = 0x1038;
@@ -184,7 +183,7 @@ async fn configuration_handler(config_interface: HidDevice, events: UpdateChanne
             ConfigAction::SetEqualizerLevels(mut levels) => {
                 levels.prepend([0x00, 0x33]);
                 levels
-            },
+            }
             ConfigAction::SetBluetoothCallAction(action) => {
                 let v = match action {
                     CallAction::Nothing => 0x00,
@@ -192,13 +191,14 @@ async fn configuration_handler(config_interface: HidDevice, events: UpdateChanne
                     CallAction::Mute => 0x02
                 };
                 vec![0x00, 0xb3, v]
-            },
+            }
             ConfigAction::EnableAutoBluetoothActivation(enabled) => vec![0x00, 0xb2, u8::from(enabled)],
             ConfigAction::SetMicrophoneLightStrength(level) => vec![0x00, 0xae, level],
             ConfigAction::SetInactiveTime(minutes) => vec![0x00, 0xa3, minutes]
         };
         //TODO close the channel after a timeout
-        config_interface.write_output_report(&data)
+        config_interface
+            .write_output_report(&data)
             .await
             .unwrap_or_else(|err| events.send_log(DeviceUpdate::DeviceError(err)));
     }
@@ -343,8 +343,7 @@ impl MicrophoneVolume for ArctisNova7 {
 }
 
 impl VolumeLimiter for ArctisNova7 {
-
-    fn set_enabled(&self, enabled: bool)  {
+    fn set_enabled(&self, enabled: bool) {
         self.request_config_action(ConfigAction::EnableVolumeLimiter(enabled));
     }
 }
@@ -383,8 +382,7 @@ impl Equalizer for ArctisNova7 {
 }
 
 impl BluetoothConfig for ArctisNova7 {
-
-    fn set_call_action(&self, action: CallAction){
+    fn set_call_action(&self, action: CallAction) {
         self.request_config_action(ConfigAction::SetBluetoothCallAction(action));
     }
 
@@ -398,7 +396,7 @@ impl MicrophoneLight for ArctisNova7 {
         4
     }
 
-    fn set_light_strength(&self, level: u8){
+    fn set_light_strength(&self, level: u8) {
         assert!(level < MicrophoneLight::levels(self));
         self.request_config_action(ConfigAction::SetMicrophoneLightStrength(level));
     }

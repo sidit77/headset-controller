@@ -48,8 +48,6 @@ impl Default for ChatMix {
     }
 }
 
-
-
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Interface {
     pub product_id: u16,
@@ -117,9 +115,6 @@ pub enum DeviceUpdate {
     DeviceError(HidError)
 }
 
-
-
-
 #[derive(Debug, Clone, Default)]
 pub struct DeviceManager {
     interfaces: InterfaceMap,
@@ -147,8 +142,7 @@ impl DeviceManager {
         self.devices.extend(
             SUPPORTED_DEVICES
                 .iter()
-                .chain(DUMMY_DEVICE_ENABLED
-                    .then_some(&DUMMY_DEVICE))
+                .chain(DUMMY_DEVICE_ENABLED.then_some(&DUMMY_DEVICE))
                 .filter(|dev| {
                     dev.required_interfaces
                         .iter()
