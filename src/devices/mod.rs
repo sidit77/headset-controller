@@ -6,7 +6,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::future::Future;
 use std::pin::Pin;
 
-use async_hid::DeviceInfo;
+use async_hid::{DeviceInfo, HidError};
 use color_eyre::eyre::Error as EyreError;
 use tao::event_loop::EventLoopProxy;
 use tracing::instrument;
@@ -14,6 +14,8 @@ use tracing::instrument;
 use crate::config::{CallAction, DUMMY_DEVICE as DUMMY_DEVICE_ENABLED};
 use crate::devices::arctis_nova_7::{ARCTIS_NOVA_7, ARCTIS_NOVA_7P, ARCTIS_NOVA_7X};
 use crate::devices::dummy::DUMMY_DEVICE;
+
+pub const SUPPORTED_DEVICES: &[SupportedDevice] = &[ARCTIS_NOVA_7, ARCTIS_NOVA_7X, ARCTIS_NOVA_7P];
 
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u16)]
@@ -46,41 +48,7 @@ impl Default for ChatMix {
     }
 }
 
-pub trait SideTone {
-    fn levels(&self) -> u8;
-    fn set_level(&self, level: u8) -> DeviceResult<()>;
-}
 
-pub trait VolumeLimiter {
-    fn set_enabled(&self, enabled: bool) -> DeviceResult<()>;
-}
-
-pub trait MicrophoneVolume {
-    fn levels(&self) -> u8;
-    fn set_level(&self, level: u8) -> DeviceResult<()>;
-}
-
-pub trait Equalizer {
-    fn bands(&self) -> u8;
-    fn base_level(&self) -> u8;
-    fn variance(&self) -> u8;
-    fn presets(&self) -> &[(&str, &[u8])];
-    fn set_levels(&self, levels: &[u8]) -> DeviceResult<()>;
-}
-
-pub trait BluetoothConfig {
-    fn set_call_action(&self, action: CallAction) -> DeviceResult<()>;
-    fn set_auto_enabled(&self, enabled: bool) -> DeviceResult<()>;
-}
-
-pub trait MicrophoneLight {
-    fn levels(&self) -> u8;
-    fn set_light_strength(&self, level: u8) -> DeviceResult<()>;
-}
-
-pub trait InactiveTime {
-    fn set_inactive_time(&self, minutes: u8) -> DeviceResult<()>;
-}
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Interface {
@@ -141,52 +109,16 @@ impl SupportedDevice {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum DeviceUpdate {
     ConnectionChanged,
     ChatMixChanged,
-    BatteryLevel
+    BatteryLevel,
+    DeviceError(HidError)
 }
 
-pub trait Device {
-    fn strings(&self) -> DeviceStrings;
-    fn is_connected(&self) -> bool;
 
-    fn name(&self) -> &'static str {
-        self.strings().name
-    }
-    fn get_battery_status(&self) -> Option<BatteryLevel> {
-        None
-    }
-    fn get_chat_mix(&self) -> Option<ChatMix> {
-        None
-    }
-    fn get_side_tone(&self) -> Option<&dyn SideTone> {
-        None
-    }
-    fn get_mic_volume(&self) -> Option<&dyn MicrophoneVolume> {
-        None
-    }
-    fn get_volume_limiter(&self) -> Option<&dyn VolumeLimiter> {
-        None
-    }
-    fn get_equalizer(&self) -> Option<&dyn Equalizer> {
-        None
-    }
-    fn get_bluetooth_config(&self) -> Option<&dyn BluetoothConfig> {
-        None
-    }
-    fn get_inactive_time(&self) -> Option<&dyn InactiveTime> {
-        None
-    }
-    fn get_mic_light(&self) -> Option<&dyn MicrophoneLight> {
-        None
-    }
-}
-pub type BoxedDevice = Box<dyn Device>;
-pub type BoxedDeviceFuture<'a> = Pin<Box<dyn Future<Output = DeviceResult<BoxedDevice>> + 'a>>;
 
-pub const SUPPORTED_DEVICES: &[SupportedDevice] = &[ARCTIS_NOVA_7, ARCTIS_NOVA_7X, ARCTIS_NOVA_7P];
 
 #[derive(Debug, Clone, Default)]
 pub struct DeviceManager {
@@ -259,7 +191,86 @@ impl DeviceManager {
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum ConfigAction {
+    SetSideTone(u8)
+}
+
 pub type DeviceResult<T> = Result<T, EyreError>;
+pub type BoxedDevice = Box<dyn Device>;
+pub type BoxedDeviceFuture<'a> = Pin<Box<dyn Future<Output = DeviceResult<BoxedDevice>> + 'a>>;
+
+pub trait Device {
+    fn strings(&self) -> DeviceStrings;
+    fn is_connected(&self) -> bool;
+
+    fn name(&self) -> &'static str {
+        self.strings().name
+    }
+    fn get_battery_status(&self) -> Option<BatteryLevel> {
+        None
+    }
+    fn get_chat_mix(&self) -> Option<ChatMix> {
+        None
+    }
+    fn get_side_tone(&self) -> Option<&dyn SideTone> {
+        None
+    }
+    fn get_mic_volume(&self) -> Option<&dyn MicrophoneVolume> {
+        None
+    }
+    fn get_volume_limiter(&self) -> Option<&dyn VolumeLimiter> {
+        None
+    }
+    fn get_equalizer(&self) -> Option<&dyn Equalizer> {
+        None
+    }
+    fn get_bluetooth_config(&self) -> Option<&dyn BluetoothConfig> {
+        None
+    }
+    fn get_inactive_time(&self) -> Option<&dyn InactiveTime> {
+        None
+    }
+    fn get_mic_light(&self) -> Option<&dyn MicrophoneLight> {
+        None
+    }
+}
+
+pub trait SideTone {
+    fn levels(&self) -> u8;
+    fn set_level(&self, level: u8) -> DeviceResult<()>;
+}
+
+pub trait VolumeLimiter {
+    fn set_enabled(&self, enabled: bool) -> DeviceResult<()>;
+}
+
+pub trait MicrophoneVolume {
+    fn levels(&self) -> u8;
+    fn set_level(&self, level: u8) -> DeviceResult<()>;
+}
+
+pub trait Equalizer {
+    fn bands(&self) -> u8;
+    fn base_level(&self) -> u8;
+    fn variance(&self) -> u8;
+    fn presets(&self) -> &[(&str, &[u8])];
+    fn set_levels(&self, levels: &[u8]) -> DeviceResult<()>;
+}
+
+pub trait BluetoothConfig {
+    fn set_call_action(&self, action: CallAction) -> DeviceResult<()>;
+    fn set_auto_enabled(&self, enabled: bool) -> DeviceResult<()>;
+}
+
+pub trait MicrophoneLight {
+    fn levels(&self) -> u8;
+    fn set_light_strength(&self, level: u8) -> DeviceResult<()>;
+}
+
+pub trait InactiveTime {
+    fn set_inactive_time(&self, minutes: u8) -> DeviceResult<()>;
+}
 
 /*
 #[derive(Debug)]

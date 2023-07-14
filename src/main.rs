@@ -237,6 +237,7 @@ fn main() -> Result<()> {
             }
             Event::UserEvent(event) => match event {
                 DeviceUpdate::ConnectionChanged | DeviceUpdate::BatteryLevel => debouncer.submit(Action::UpdateDeviceStatus),
+                DeviceUpdate::DeviceError(err) => tracing::error!("The device return an error: {}", err),
                 DeviceUpdate::ChatMixChanged => {}
             },
             _ => ()

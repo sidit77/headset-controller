@@ -3,14 +3,12 @@ use std::sync::Arc;
 use async_hid::Device as HidDevice;
 use crossbeam_utils::atomic::AtomicCell;
 use tokio::spawn;
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tracing::instrument;
 
-use crate::devices::{
-    BatteryLevel, BoxedDevice, BoxedDeviceFuture, ChatMix, Device, DeviceResult, DeviceStrings, DeviceUpdate, Interface, InterfaceMap,
-    SupportedDevice, UpdateChannel
-};
-use crate::util::AtomicCellExt;
+use crate::devices::{BatteryLevel, BoxedDevice, BoxedDeviceFuture, ChatMix, ConfigAction, Device, DeviceResult, DeviceStrings, DeviceUpdate, Interface, InterfaceMap, SideTone, SupportedDevice, UpdateChannel};
+use crate::util::{AtomicCellExt, SenderExt};
 
 const VID_STEELSERIES: u16 = 0x1038;
 
@@ -93,32 +91,36 @@ impl State {
 pub struct ArctisNova7 {
     pub strings: DeviceStrings,
     update_task: JoinHandle<()>,
-    config_channel: HidDevice,
+    config_task: JoinHandle<()>,
+    config_channel: UnboundedSender<ConfigAction>,
     state: Arc<AtomicCell<State>>
 }
 
 impl ArctisNova7 {
     async fn open(strings: DeviceStrings, pid: u16, update_channel: UpdateChannel, interfaces: &InterfaceMap) -> DeviceResult<BoxedDevice> {
         debug_assert!(AtomicCell::<State>::is_lock_free());
-        let config_channel = interfaces
+        let config_interface = interfaces
             .get(&Interface::new(CONFIGURATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, pid))
-            .unwrap()
+            .expect("Failed to find interface in map")
             .open()
             .await?;
 
-        let state = Arc::new(AtomicCell::new(load_state(&config_channel).await?));
+        let state = Arc::new(AtomicCell::new(load_state(&config_interface).await?));
 
         //TODO open as read-only
         let notification_interface = interfaces
             .get(&Interface::new(NOTIFICATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, pid))
-            .unwrap()
+            .expect("Failed to find interface in map")
             .open()
             .await?;
 
-        let update_task = spawn(listen_for_updates(notification_interface, update_channel.clone(), state.clone()));
+        let (config_channel, command_receiver) = unbounded_channel();
+        let config_task = spawn(configuration_handler(config_interface, update_channel.clone(), command_receiver));
+        let update_task = spawn(update_handler(notification_interface, update_channel.clone(), state.clone()));
 
         Ok(Box::new(Self {
             update_task,
+            config_task,
             config_channel,
             strings,
             state
@@ -135,6 +137,12 @@ impl ArctisNova7 {
 
     pub fn open_pc(update_channel: UpdateChannel, interfaces: &InterfaceMap) -> BoxedDeviceFuture {
         Box::pin(Self::open(ARCTIS_NOVA_7.strings, PID_ARCTIS_NOVA_7, update_channel, interfaces))
+    }
+
+    fn request_config_action(&self, action: ConfigAction) {
+        self.config_channel
+            .send(action)
+            .unwrap_or_else(|_| tracing::warn!("config channel close unexpectedly"))
     }
 }
 
@@ -164,7 +172,21 @@ async fn load_state(config_interface: &HidDevice) -> DeviceResult<State> {
 }
 
 #[instrument(skip_all)]
-async fn listen_for_updates(notification_interface: HidDevice, events: UpdateChannel, state: Arc<AtomicCell<State>>) {
+async fn configuration_handler(config_interface: HidDevice, events: UpdateChannel, mut config_requests: UnboundedReceiver<ConfigAction>) {
+    while let Some(request) = config_requests.recv().await {
+        tracing::debug!("Attempting apply config request: {:?}", request);
+        let result = match request {
+            ConfigAction::SetSideTone(level) => {
+                config_interface.write_output_report(&[0x00, 0x39, level]).await
+            }
+        };
+        result.unwrap_or_else(|err| events.send_log(DeviceUpdate::DeviceError(err)));
+    }
+    tracing::warn!("Request channel close unexpectedly");
+}
+
+#[instrument(skip_all)]
+async fn update_handler(notification_interface: HidDevice, events: UpdateChannel, state: Arc<AtomicCell<State>>) {
     let mut buf = [0u8; STATUS_BUF_SIZE];
     loop {
         match notification_interface.read_input_report(&mut buf).await {
@@ -176,10 +198,10 @@ async fn listen_for_updates(notification_interface: HidDevice, events: UpdateCha
                         StatusUpdate::Battery(level) => state.battery = level,
                         StatusUpdate::ChatMix(mix) => state.chat_mix = mix
                     });
-                    events.send_event(DeviceUpdate::from(update)).unwrap();
+                    events.send_log(DeviceUpdate::from(update));
                 }
             }
-            Err(err) => println!("notification task: {}", err)
+            Err(err) => events.send_log(DeviceUpdate::DeviceError(err))
         }
     }
 }
@@ -228,6 +250,7 @@ impl Drop for ArctisNova7 {
     fn drop(&mut self) {
         tracing::trace!("Stopping background tasks for {}", self.name());
         self.update_task.abort();
+        self.config_task.abort();
     }
 }
 
@@ -246,6 +269,22 @@ impl Device for ArctisNova7 {
 
     fn get_chat_mix(&self) -> Option<ChatMix> {
         Some(self.state.load().chat_mix)
+    }
+
+    fn get_side_tone(&self) -> Option<&dyn SideTone> {
+        Some(self)
+    }
+}
+
+impl SideTone for ArctisNova7 {
+    fn levels(&self) -> u8 {
+        4
+    }
+
+    fn set_level(&self, level: u8) -> DeviceResult<()> {
+        assert!(level < SideTone::levels(self));
+        self.request_config_action(ConfigAction::SetSideTone(level));
+        Ok(())
     }
 }
 

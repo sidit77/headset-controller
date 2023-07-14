@@ -1,5 +1,6 @@
 use std::io::{Error, ErrorKind, Write};
 use crossbeam_utils::atomic::AtomicCell;
+use tao::event_loop::EventLoopProxy;
 
 pub trait CopySlice<T> {
     fn cloned(self) -> Box<[T]>;
@@ -80,5 +81,16 @@ impl<T: Copy + Eq> AtomicCellExt<T> for AtomicCell<T> {
                 }
             }
         }
+    }
+}
+
+pub trait SenderExt<T> {
+    fn send_log(&self, update: T);
+}
+
+impl<T> SenderExt<T> for EventLoopProxy<T> {
+    fn send_log(&self, update: T) {
+        self.send_event(update)
+            .unwrap_or_else(|_| tracing::warn!("Could not send message because the receiver is closed"))
     }
 }
