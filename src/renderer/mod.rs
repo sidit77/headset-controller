@@ -45,7 +45,7 @@ pub struct EguiWindow {
 
 impl EguiWindow {
     #[instrument(skip_all, name = "egui_window_new")]
-    pub fn new(event_loop: &EventLoopWindowTarget<()>) -> Self {
+    pub fn new<T>(event_loop: &EventLoopWindowTarget<T>) -> Self {
         let window_builder = WindowBuilder::new()
             .with_resizable(true)
             .with_inner_size(LogicalSize { width: 800.0, height: 600.0 })
@@ -126,7 +126,7 @@ impl EguiWindow {
     }
 
     #[instrument(skip_all)]
-    pub fn handle_events(&mut self, event: &Event<()>, gui: impl FnMut(&Context)) -> bool {
+    pub fn handle_events<T>(&mut self, event: &Event<T>, gui: impl FnMut(&Context)) -> bool {
         if self
             .next_repaint
             .map(|t| Instant::now().checked_duration_since(t))

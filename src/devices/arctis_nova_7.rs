@@ -6,7 +6,7 @@ use async_hid::{Device as HidDevice};
 use crossbeam_utils::atomic::AtomicCell;
 use tokio::spawn;
 
-use crate::devices::{BatteryLevel, BoxedDevice, BoxedDeviceFuture, ChatMix, Device, DeviceResult, DeviceUpdate, Interface, InterfaceMap, SupportedDevice, UpdateChannel};
+use crate::devices::{BatteryLevel, BoxedDevice, BoxedDeviceFuture, ChatMix, Device, DeviceResult, DeviceStrings, DeviceUpdate, Interface, InterfaceMap, SupportedDevice, UpdateChannel};
 
 const VID_STEELSERIES: u16 = 0x1038;
 
@@ -19,7 +19,10 @@ const NOTIFICATION_USAGE_PAGE: u16 = 0xFF00;
 const CONFIGURATION_USAGE_PAGE: u16 = 0xFFC0;
 
 pub const ARCTIS_NOVA_7X: SupportedDevice = SupportedDevice {
-    name: "Steelseries Arctis Nova 7X",
+    strings: DeviceStrings::new(
+        "Steelseries Arctis Nova 7X",
+        "Steelseries",
+        "Arctis Nova 7X"),
     required_interfaces: &[
         Interface::new(NOTIFICATION_USAGE_PAGE , USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7X),
         Interface::new(CONFIGURATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7X)
@@ -70,15 +73,15 @@ impl State {
 }
 
 pub struct ArctisNova7 {
+    pub strings: DeviceStrings,
     update_task: JoinHandle<()>,
     config_channel: HidDevice,
-    name: &'static str,
     state: Arc<AtomicCell<State>>
 }
 
 impl ArctisNova7 {
 
-    async fn open(name: &'static str, pid: u16, update_channel: UpdateChannel, interfaces: &InterfaceMap) -> DeviceResult<BoxedDevice> {
+    async fn open(strings: DeviceStrings, pid: u16, update_channel: UpdateChannel, interfaces: &InterfaceMap) -> DeviceResult<BoxedDevice> {
         debug_assert!(AtomicCell::<State>::is_lock_free());
         let config_channel = interfaces
             .get(&Interface::new(CONFIGURATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, pid))
@@ -99,13 +102,13 @@ impl ArctisNova7 {
         Ok(Box::new(Self {
             update_task,
             config_channel,
-            name,
+            strings,
             state,
         }))
     }
 
     pub fn open_xbox(update_channel: UpdateChannel, interfaces: &InterfaceMap) -> BoxedDeviceFuture {
-        Box::pin(Self::open(ARCTIS_NOVA_7X.name, PID_ARCTIS_NOVA_7X, update_channel, interfaces))
+        Box::pin(Self::open(ARCTIS_NOVA_7X.strings, PID_ARCTIS_NOVA_7X, update_channel, interfaces))
     }
 
 }
@@ -151,7 +154,7 @@ async fn listen_for_updates(notification_interface: HidDevice, events: UpdateCha
                         state.compare_exchange(previous_state, current_state).is_err()
                     } { tracing::trace!("compare exchange failed!") }
 
-                    events.send(DeviceUpdate::ConnectionStatusChanged).unwrap();
+                    events.send_event(DeviceUpdate::ConnectionStatusChanged).unwrap();
                 }
             }
             Err(err) => println!("notification task: {}", err),
@@ -197,9 +200,8 @@ impl Drop for ArctisNova7 {
 }
 
 impl Device for ArctisNova7 {
-
-    fn name(&self) -> &str {
-        self.name
+    fn strings(&self) -> DeviceStrings {
+        self.strings
     }
 
     fn is_connected(&self) -> bool {

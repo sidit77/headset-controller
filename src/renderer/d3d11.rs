@@ -23,7 +23,7 @@ pub struct GraphicsWindow {
 
 impl GraphicsWindow {
     #[instrument(skip_all, name = "d3d11_window_new")]
-    pub fn new(window_builder: WindowBuilder, event_loop: &EventLoopWindowTarget<()>) -> Self {
+    pub fn new<T>(window_builder: WindowBuilder, event_loop: &EventLoopWindowTarget<T>) -> Self {
         let window = window_builder
             .build(event_loop)
             .expect("Failed to create window");

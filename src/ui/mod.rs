@@ -32,7 +32,7 @@ pub static WINDOW_ICON: Lazy<Icon> = Lazy::new(|| {
 
 #[instrument(skip_all)]
 pub fn config_ui(
-    ctx: &Context, debouncer: &mut Debouncer, config: &mut Config, device: &dyn Device, device_list: &[Box<dyn SupportedDevice>],
+    ctx: &Context, debouncer: &mut Debouncer, config: &mut Config, device: &dyn Device, device_list: &[SupportedDevice],
     audio_system: &mut AudioSystem
 ) {
     SidePanel::new(Side::Left, "Profiles")

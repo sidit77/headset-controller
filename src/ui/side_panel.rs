@@ -7,20 +7,20 @@ use crate::devices::{Device, SupportedDevice};
 use crate::submit_profile_change;
 
 #[instrument(skip_all)]
-pub fn side_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config, device: &dyn Device, device_list: &[Box<dyn SupportedDevice>]) {
+pub fn side_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config, device: &dyn Device, device_list: &[SupportedDevice]) {
     ui.style_mut()
         .text_styles
         .get_mut(&TextStyle::Body)
         .unwrap()
         .size = 14.0;
     ui.label(
-        RichText::from(&device.get_info().manufacturer)
+        RichText::from(device.strings().manufacturer)
             .heading()
             .size(30.0)
     )
     .union(
         ui.label(
-            RichText::from(&device.get_info().product)
+            RichText::from(device.strings().product)
                 .heading()
                 .size(20.0)
         )

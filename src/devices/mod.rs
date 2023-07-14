@@ -8,7 +8,7 @@ use std::pin::Pin;
 use async_hid::DeviceInfo;
 
 use color_eyre::eyre::Error as EyreError;
-use tokio::sync::mpsc::UnboundedSender;
+use tao::event_loop::EventLoopProxy;
 use tracing::instrument;
 
 use crate::config::{CallAction};
@@ -102,18 +102,38 @@ impl From<&DeviceInfo> for Interface {
     }
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct DeviceStrings {
+    pub name: &'static str,
+    pub manufacturer: &'static str,
+    pub product: &'static str,
+}
+
+impl DeviceStrings {
+    pub const fn new(name: &'static str, manufacturer: &'static str, product: &'static str) -> Self {
+        Self { name, manufacturer, product }
+    }
+}
+
+
 pub type InterfaceMap = HashMap<Interface, DeviceInfo>;
-pub type UpdateChannel = UnboundedSender<DeviceUpdate>;
+pub type UpdateChannel = EventLoopProxy<DeviceUpdate>;
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct SupportedDevice {
-    name: &'static str,
+    pub strings: DeviceStrings,
     required_interfaces: &'static [Interface],
     open: fn(channel: UpdateChannel, interfaces: &InterfaceMap) -> BoxedDeviceFuture
 }
 
 impl Display for SupportedDevice {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.name)
+        f.write_str(self.name())
+    }
+}
+
+impl SupportedDevice {
+    pub const fn name(&self) -> &'static str {
+        self.strings.name
     }
 }
 
@@ -123,9 +143,12 @@ pub enum DeviceUpdate {
 }
 
 pub trait Device {
-    fn name(&self) -> &str;
+    fn strings(&self) -> DeviceStrings;
     fn is_connected(&self) -> bool;
 
+    fn name(&self) -> &'static str {
+        self.strings().name
+    }
     fn get_battery_status(&self) -> Option<BatteryLevel> {
         None
     }
@@ -188,7 +211,7 @@ impl DeviceManager {
                 .required_interfaces
                 .iter()
                 .all(|i| self.interfaces.contains_key(i)))
-            .inspect(|dev| println!("Found {}", dev.name)));
+            .inspect(|dev| println!("Found {}", dev.strings.name)));
 
         Ok(())
     }
@@ -198,7 +221,7 @@ impl DeviceManager {
     }
 
     pub async fn open(&self, supported: &SupportedDevice, update_channel: UpdateChannel) -> DeviceResult<BoxedDevice> {
-        println!("Opening {}", supported.name);
+        println!("Opening {}", supported.strings.name);
         let dev = (supported.open)(update_channel, &self.interfaces).await?;
 
         Ok(dev)
@@ -211,7 +234,7 @@ impl DeviceManager {
             .flat_map(|pref| self
                 .devices
                 .iter()
-                .filter(move |dev| dev.name == pref))
+                .filter(move |dev| dev.strings.name == pref))
             .chain(self.devices.iter());
         for device in device_iter {
             match self.open(device, update_channel.clone()).await {

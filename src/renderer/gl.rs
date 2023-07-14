@@ -24,7 +24,7 @@ pub struct GraphicsWindow {
 
 impl GraphicsWindow {
     #[instrument(skip_all, name = "gl_window_new")]
-    pub fn new(window_builder: WindowBuilder, event_loop: &EventLoopWindowTarget<()>) -> Self {
+    pub fn new<T>(window_builder: WindowBuilder, event_loop: &EventLoopWindowTarget<T>) -> Self {
         let template = ConfigTemplateBuilder::new()
             .with_depth_size(0)
             .with_stencil_size(0)

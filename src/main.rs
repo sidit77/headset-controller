@@ -1,5 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
+/*
 mod devices;
 mod config;
 mod util;
@@ -37,8 +37,8 @@ fn main() -> Result<()> {
         Ok(())
     })
 }
+*/
 
-/*
 mod audio;
 mod config;
 mod debouncer;
@@ -57,6 +57,7 @@ use color_eyre::Result;
 use tao::event::Event;
 use tao::event_loop::{ControlFlow, EventLoop};
 use tao::platform::run_return::EventLoopExtRunReturn;
+use tokio::runtime::Builder;
 use tracing::instrument;
 use tracing_error::ErrorLayer;
 use tracing_subscriber::filter::{LevelFilter, Targets};
@@ -80,17 +81,25 @@ fn main() -> Result<()> {
         .with(layer().without_time())
         .with(layer().with_ansi(false).with_writer(logfile))
         .init();
+    let runtime = Builder::new_multi_thread()
+        .enable_time()
+        .build()?;
 
     let span = tracing::info_span!("init").entered();
 
     let mut config = Config::load()?;
 
+    let mut event_loop = EventLoop::with_user_event();
+    let event_loop_proxy = event_loop.create_proxy();
+
     let mut audio_system = AudioSystem::new();
 
-    let mut device_manager = DeviceManager::new()?;
-    let mut device = device_manager.find_preferred_device(&config.preferred_device);
-
-    let mut event_loop = EventLoop::new();
+    let mut device_manager = runtime.block_on(DeviceManager::new())?;
+    let mut device = runtime.block_on(async {
+        device_manager
+            .find_preferred_device(&config.preferred_device, event_loop_proxy.clone())
+            .await
+    });
 
     let mut tray = AppTray::new(&event_loop);
 
@@ -98,8 +107,9 @@ fn main() -> Result<()> {
         .not()
         .then(|| EguiWindow::new(&event_loop));
 
-    let mut next_device_poll = Instant::now();
     let mut debouncer = Debouncer::new();
+    let mut last_connected = false;
+    let mut last_battery = Default::default();
     debouncer.submit_all([Action::UpdateSystemAudio, Action::UpdateTrayTooltip, Action::UpdateTray]);
 
     span.exit();
@@ -170,12 +180,19 @@ fn main() -> Result<()> {
                     let _span = tracing::info_span!("debouncer_event", ?action).entered();
                     tracing::trace!("Processing event");
                     match action {
-                        Action::RefreshDeviceList => device_manager
-                            .refresh()
-                            .unwrap_or_else(|err| tracing::warn!("Failed to refresh devices: {}", err)),
+                        Action::RefreshDeviceList => runtime.block_on(async {
+                            device_manager
+                                .refresh()
+                                .await
+                                .unwrap_or_else(|err| tracing::warn!("Failed to refresh devices: {}", err))
+                        }),
                         Action::SwitchDevice => {
                             if config.preferred_device != device.as_ref().map(|d| d.name().to_string()) {
-                                device = device_manager.find_preferred_device(&config.preferred_device);
+                                device = runtime.block_on(async {
+                                    device_manager
+                                        .find_preferred_device(&config.preferred_device, event_loop_proxy.clone())
+                                        .await
+                                });
                                 submit_full_change(&mut debouncer);
                                 debouncer.submit_all([Action::UpdateTray, Action::UpdateTrayTooltip]);
                             } else {
@@ -203,48 +220,42 @@ fn main() -> Result<()> {
                         }
                     }
                 }
-                if let Some(device) = &mut device {
-                    if next_device_poll <= Instant::now() {
-                        let _span = tracing::info_span!("device_poll").entered();
-                        let (last_connected, last_battery) = (device.is_connected(), device.get_battery_status());
-                        next_device_poll = Instant::now()
-                            + device
-                                .poll()
-                                .map_err(|err| tracing::warn!("Failed to poll device: {:?}", err))
-                                .unwrap_or(Duration::from_secs(10));
-
-                        if last_connected != device.is_connected() {
-                            let mut msg = match device.is_connected() {
-                                true => "Connected",
-                                false => "Disconnected"
-                            }
+            }
+            Event::UserEvent(_) => {
+                if let Some(device) = device.as_ref() {
+                    if last_connected != device.is_connected() {
+                        let mut msg = match device.is_connected() {
+                            true => "Connected",
+                            false => "Disconnected"
+                        }
                             .to_string();
-                            let battery = [last_battery, device.get_battery_status()]
-                                .into_iter()
-                                .filter_map(|b| match b {
-                                    Some(BatteryLevel::Level(l)) => Some(l),
-                                    _ => None
-                                })
-                                .min();
-                            if let Some(level) = battery {
-                                msg = format!("{} (Battery: {}%)", msg, level);
-                            }
-                            notification::notify(device.name(), &msg, Duration::from_secs(2))
-                                .unwrap_or_else(|err| tracing::warn!("Can not create notification: {:?}", err));
-                            debouncer.submit(Action::UpdateSystemAudio);
-                            debouncer.force(Action::UpdateSystemAudio);
+                        let battery = [last_battery, device.get_battery_status()]
+                            .into_iter()
+                            .filter_map(|b| match b {
+                                Some(BatteryLevel::Level(l)) => Some(l),
+                                _ => None
+                            })
+                            .min();
+                        if let Some(level) = battery {
+                            msg = format!("{} (Battery: {}%)", msg, level);
                         }
-                        if last_battery != device.get_battery_status() {
-                            debouncer.submit(Action::UpdateTrayTooltip);
-                        }
+                        notification::notify(device.name(), &msg, Duration::from_secs(2))
+                            .unwrap_or_else(|err| tracing::warn!("Can not create notification: {:?}", err));
+                        debouncer.submit(Action::UpdateSystemAudio);
+                        debouncer.force(Action::UpdateSystemAudio);
                     }
+                    if last_battery != device.get_battery_status() {
+                        debouncer.submit(Action::UpdateTrayTooltip);
+                    }
+                    last_battery = device.get_battery_status();
+                    last_connected = device.is_connected();
                 }
             }
             _ => ()
         }
         if !matches!(*control_flow, ControlFlow::ExitWithCode(_)) {
             let next_window_update = window.as_ref().and_then(|w| w.next_repaint());
-            let next_update = [device.as_ref().map(|_| next_device_poll), next_window_update, debouncer.next_action()]
+            let next_update = [next_window_update, debouncer.next_action()]
                 .into_iter()
                 .flatten()
                 .min();
@@ -404,4 +415,3 @@ pub fn update_tray_tooltip(tray: &mut AppTray, device: &Option<BoxedDevice>) {
     }
     tracing::trace!("Updated tooltip");
 }
-*/
