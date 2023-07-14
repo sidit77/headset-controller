@@ -10,6 +10,7 @@ use crate::devices::{
     BatteryLevel, BoxedDevice, BoxedDeviceFuture, ChatMix, Device, DeviceResult, DeviceStrings, DeviceUpdate, Interface, InterfaceMap,
     SupportedDevice, UpdateChannel
 };
+use crate::util::AtomicCellExt;
 
 const VID_STEELSERIES: u16 = 0x1038;
 
@@ -85,22 +86,6 @@ impl State {
             PowerState::Offline => BatteryLevel::Unknown,
             PowerState::Charging => BatteryLevel::Charging,
             PowerState::Discharging => BatteryLevel::Level(self.battery)
-        }
-    }
-}
-
-fn update_state(state: &AtomicCell<State>, f: impl Fn(&mut State)) {
-    let mut previous_state = state.load();
-    loop {
-        let mut current_state = previous_state;
-        f(&mut current_state);
-
-        match state.compare_exchange(previous_state, current_state) {
-            Ok(_) => break,
-            Err(current) => {
-                previous_state = current;
-                tracing::trace!("compare exchange failed!")
-            }
         }
     }
 }
@@ -186,7 +171,7 @@ async fn listen_for_updates(notification_interface: HidDevice, events: UpdateCha
             Ok(size) => {
                 debug_assert_eq!(size, buf.len());
                 if let Some(update) = parse_status_update(&buf[1..]) {
-                    update_state(&state, |state| match update {
+                    state.update(|state| match update {
                         StatusUpdate::PowerState(ps) => state.power_state = ps,
                         StatusUpdate::Battery(level) => state.battery = level,
                         StatusUpdate::ChatMix(mix) => state.chat_mix = mix
@@ -241,8 +226,8 @@ fn normalize_battery_level(byte: u8) -> u8 {
 
 impl Drop for ArctisNova7 {
     fn drop(&mut self) {
+        tracing::trace!("Stopping background tasks for {}", self.name());
         self.update_task.abort();
-        println!("Drop");
     }
 }
 

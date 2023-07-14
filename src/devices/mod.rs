@@ -222,7 +222,7 @@ impl DeviceManager {
                         .iter()
                         .all(|i| self.interfaces.contains_key(i))
                 })
-                .inspect(|dev| println!("Found {}", dev.strings.name))
+                .inspect(|dev| tracing::trace!("Found {}", dev.strings.name))
         );
 
         Ok(())
@@ -233,13 +233,13 @@ impl DeviceManager {
     }
 
     pub async fn open(&self, supported: &SupportedDevice, update_channel: UpdateChannel) -> DeviceResult<BoxedDevice> {
-        println!("Opening {}", supported.strings.name);
+        tracing::trace!("Attempting to open {}", supported.strings.name);
         let dev = (supported.open)(update_channel, &self.interfaces).await?;
 
         Ok(dev)
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, update_channel))]
     pub async fn find_preferred_device(&self, preference: &Option<String>, update_channel: UpdateChannel) -> Option<BoxedDevice> {
         let device_iter = preference
             .iter()

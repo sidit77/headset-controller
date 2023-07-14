@@ -1,4 +1,5 @@
 use std::io::{Error, ErrorKind, Write};
+use crossbeam_utils::atomic::AtomicCell;
 
 pub trait CopySlice<T> {
     fn cloned(self) -> Box<[T]>;
@@ -57,5 +58,27 @@ impl<T: Write> Write for EscapeStripper<T> {
 
     fn flush(&mut self) -> std::io::Result<()> {
         self.inner.flush()
+    }
+}
+
+pub trait AtomicCellExt<T> {
+    fn update<F: Fn(&mut T)>(&self, func: F);
+}
+
+impl<T: Copy + Eq> AtomicCellExt<T> for AtomicCell<T> {
+    fn update<F: Fn(&mut T)>(&self, func: F) {
+        let mut previous_state = self.load();
+        loop {
+            let mut current_state = previous_state;
+            func(&mut current_state);
+
+            match self.compare_exchange(previous_state, current_state) {
+                Ok(_) => break,
+                Err(current) => {
+                    previous_state = current;
+                    tracing::trace!("compare exchange failed!")
+                }
+            }
+        }
     }
 }
