@@ -109,6 +109,7 @@ dependencies = [
 [[package]]
 name = "async-hid"
 version = "0.1.0"
+source = "git+https://github.com/sidit77/async-hid.git#17e04a3d92abf1c6c4128a81ec58463015c0448e"
 dependencies = [
  "backtrace",
  "flume",
