@@ -66,7 +66,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 use crate::audio::AudioSystem;
-use crate::config::{log_file, Config, EqualizerConfig, HeadsetConfig, START_QUIET, CLOSE_IMMEDIATELY};
+use crate::config::{log_file, Config, EqualizerConfig, HeadsetConfig, CLOSE_IMMEDIATELY, START_QUIET};
 use crate::debouncer::{Action, Debouncer};
 use crate::devices::{BatteryLevel, BoxedDevice, Device, DeviceManager, DeviceUpdate};
 use crate::renderer::EguiWindow;
@@ -81,9 +81,7 @@ fn main() -> Result<()> {
         .with(layer().without_time())
         .with(layer().with_ansi(false).with_writer(logfile))
         .init();
-    let runtime = Builder::new_multi_thread()
-        .enable_time()
-        .build()?;
+    let runtime = Builder::new_multi_thread().enable_time().build()?;
 
     let span = tracing::info_span!("init").entered();
 
@@ -103,9 +101,7 @@ fn main() -> Result<()> {
 
     let mut tray = AppTray::new(&event_loop);
 
-    let mut window: Option<EguiWindow> = START_QUIET
-        .not()
-        .then(|| EguiWindow::new(&event_loop));
+    let mut window: Option<EguiWindow> = START_QUIET.not().then(|| EguiWindow::new(&event_loop));
 
     let mut debouncer = Debouncer::new();
     let mut last_connected = false;
@@ -180,22 +176,24 @@ fn main() -> Result<()> {
                     let _span = tracing::info_span!("debouncer_event", ?action).entered();
                     tracing::trace!("Processing event");
                     match action {
-                        Action::UpdateDeviceStatus => if let Some(device) = &device {
-                            let current_connection = device.is_connected();
-                            let current_battery = device.get_battery_status();
-                            if current_connection != last_connected {
-                                let msg = build_notification_text(current_connection, &[current_battery, last_battery]);
-                                notification::notify(device.name(), &msg, Duration::from_secs(2))
-                                    .unwrap_or_else(|err| tracing::warn!("Can not create notification: {:?}", err));
-                                debouncer.submit_all([Action::UpdateSystemAudio, Action::UpdateTrayTooltip]);
-                                debouncer.force(Action::UpdateSystemAudio);
-                                last_connected = current_connection;
+                        Action::UpdateDeviceStatus => {
+                            if let Some(device) = &device {
+                                let current_connection = device.is_connected();
+                                let current_battery = device.get_battery_status();
+                                if current_connection != last_connected {
+                                    let msg = build_notification_text(current_connection, &[current_battery, last_battery]);
+                                    notification::notify(device.name(), &msg, Duration::from_secs(2))
+                                        .unwrap_or_else(|err| tracing::warn!("Can not create notification: {:?}", err));
+                                    debouncer.submit_all([Action::UpdateSystemAudio, Action::UpdateTrayTooltip]);
+                                    debouncer.force(Action::UpdateSystemAudio);
+                                    last_connected = current_connection;
+                                }
+                                if last_battery != current_battery {
+                                    debouncer.submit(Action::UpdateTrayTooltip);
+                                    last_battery = current_battery;
+                                }
                             }
-                            if last_battery != current_battery {
-                                debouncer.submit(Action::UpdateTrayTooltip);
-                                last_battery = current_battery;
-                            }
-                        },
+                        }
                         Action::RefreshDeviceList => runtime.block_on(async {
                             device_manager
                                 .refresh()
@@ -240,7 +238,7 @@ fn main() -> Result<()> {
             Event::UserEvent(event) => match event {
                 DeviceUpdate::ConnectionChanged | DeviceUpdate::BatteryLevel => debouncer.submit(Action::UpdateDeviceStatus),
                 DeviceUpdate::ChatMixChanged => {}
-            }
+            },
             _ => ()
         }
         if !matches!(*control_flow, ControlFlow::ExitWithCode(_)) {
@@ -412,7 +410,7 @@ fn build_notification_text(connected: bool, battery_levels: &[Option<BatteryLeve
         false => "Disconnected"
     };
     battery_levels
-        .into_iter()
+        .iter()
         .filter_map(|b| match b {
             Some(BatteryLevel::Level(l)) => Some(*l),
             _ => None

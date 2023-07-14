@@ -5,14 +5,14 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::future::Future;
 use std::pin::Pin;
-use async_hid::DeviceInfo;
 
+use async_hid::DeviceInfo;
 use color_eyre::eyre::Error as EyreError;
 use tao::event_loop::EventLoopProxy;
 use tracing::instrument;
 
-use crate::config::{CallAction};
-use crate::devices::arctis_nova_7::{ARCTIS_NOVA_7X};
+use crate::config::CallAction;
+use crate::devices::arctis_nova_7::ARCTIS_NOVA_7X;
 //use crate::devices::dummy::DummyDevice;
 
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq)]
@@ -92,7 +92,12 @@ pub struct Interface {
 
 impl Interface {
     pub const fn new(usage_page: u16, usage_id: u16, vendor_id: u16, product_id: u16) -> Self {
-        Self { product_id, vendor_id, usage_id, usage_page }
+        Self {
+            product_id,
+            vendor_id,
+            usage_id,
+            usage_page
+        }
     }
 }
 
@@ -106,7 +111,7 @@ impl From<&DeviceInfo> for Interface {
 pub struct DeviceStrings {
     pub name: &'static str,
     pub manufacturer: &'static str,
-    pub product: &'static str,
+    pub product: &'static str
 }
 
 impl DeviceStrings {
@@ -114,7 +119,6 @@ impl DeviceStrings {
         Self { name, manufacturer, product }
     }
 }
-
 
 pub type InterfaceMap = HashMap<Interface, DeviceInfo>;
 pub type UpdateChannel = EventLoopProxy<DeviceUpdate>;
@@ -180,7 +184,7 @@ pub trait Device {
     }
 }
 pub type BoxedDevice = Box<dyn Device>;
-pub type BoxedDeviceFuture<'a> = Pin<Box<dyn Future<Output=DeviceResult<BoxedDevice>> + 'a>>;
+pub type BoxedDeviceFuture<'a> = Pin<Box<dyn Future<Output = DeviceResult<BoxedDevice>> + 'a>>;
 
 pub const SUPPORTED_DEVICES: &[SupportedDevice] = &[ARCTIS_NOVA_7X];
 
@@ -191,7 +195,6 @@ pub struct DeviceManager {
 }
 
 impl DeviceManager {
-
     pub async fn new() -> DeviceResult<Self> {
         let mut result = Self::default();
         result.refresh().await?;
@@ -201,19 +204,24 @@ impl DeviceManager {
     #[instrument(skip_all)]
     pub async fn refresh(&mut self) -> DeviceResult<()> {
         self.interfaces.clear();
-        self.interfaces.extend(DeviceInfo::enumerate()
-            .await?
-            .into_iter()
-            .map(|dev| (Interface::from(&dev), dev)));
+        self.interfaces.extend(
+            DeviceInfo::enumerate()
+                .await?
+                .into_iter()
+                .map(|dev| (Interface::from(&dev), dev))
+        );
 
         self.devices.clear();
-        self.devices.extend(SUPPORTED_DEVICES
-            .iter()
-            .filter(|dev| dev
-                .required_interfaces
+        self.devices.extend(
+            SUPPORTED_DEVICES
                 .iter()
-                .all(|i| self.interfaces.contains_key(i)))
-            .inspect(|dev| println!("Found {}", dev.strings.name)));
+                .filter(|dev| {
+                    dev.required_interfaces
+                        .iter()
+                        .all(|i| self.interfaces.contains_key(i))
+                })
+                .inspect(|dev| println!("Found {}", dev.strings.name))
+        );
 
         Ok(())
     }
@@ -233,10 +241,11 @@ impl DeviceManager {
     pub async fn find_preferred_device(&self, preference: &Option<String>, update_channel: UpdateChannel) -> Option<BoxedDevice> {
         let device_iter = preference
             .iter()
-            .flat_map(|pref| self
-                .devices
-                .iter()
-                .filter(move |dev| dev.strings.name == pref))
+            .flat_map(|pref| {
+                self.devices
+                    .iter()
+                    .filter(move |dev| dev.strings.name == pref)
+            })
             .chain(self.devices.iter());
         for device in device_iter {
             match self.open(device, update_channel.clone()).await {

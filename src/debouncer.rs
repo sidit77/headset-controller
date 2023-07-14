@@ -31,8 +31,8 @@ impl Action {
     fn timeout(self) -> Duration {
         match self {
             Action::SaveConfig => Duration::from_secs(10),
-            Action::SwitchDevice |  Action::RefreshDeviceList => Duration::from_millis(10),
-            Action::UpdateDeviceStatus => Duration::from_millis(100),
+            Action::SwitchDevice | Action::RefreshDeviceList => Duration::from_millis(10),
+            //Action::UpdateDeviceStatus => Duration::from_millis(250),
             _ => Duration::from_millis(500)
         }
     }

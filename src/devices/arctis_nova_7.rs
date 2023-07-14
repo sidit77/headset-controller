@@ -1,12 +1,15 @@
 use std::sync::Arc;
 
-use tokio::task::JoinHandle;
-use tracing::instrument;
-use async_hid::{Device as HidDevice};
+use async_hid::Device as HidDevice;
 use crossbeam_utils::atomic::AtomicCell;
 use tokio::spawn;
+use tokio::task::JoinHandle;
+use tracing::instrument;
 
-use crate::devices::{BatteryLevel, BoxedDevice, BoxedDeviceFuture, ChatMix, Device, DeviceResult, DeviceStrings, DeviceUpdate, Interface, InterfaceMap, SupportedDevice, UpdateChannel};
+use crate::devices::{
+    BatteryLevel, BoxedDevice, BoxedDeviceFuture, ChatMix, Device, DeviceResult, DeviceStrings, DeviceUpdate, Interface, InterfaceMap,
+    SupportedDevice, UpdateChannel
+};
 
 const VID_STEELSERIES: u16 = 0x1038;
 
@@ -19,15 +22,12 @@ const NOTIFICATION_USAGE_PAGE: u16 = 0xFF00;
 const CONFIGURATION_USAGE_PAGE: u16 = 0xFFC0;
 
 pub const ARCTIS_NOVA_7X: SupportedDevice = SupportedDevice {
-    strings: DeviceStrings::new(
-        "Steelseries Arctis Nova 7X",
-        "Steelseries",
-        "Arctis Nova 7X"),
+    strings: DeviceStrings::new("Steelseries Arctis Nova 7X", "Steelseries", "Arctis Nova 7X"),
     required_interfaces: &[
-        Interface::new(NOTIFICATION_USAGE_PAGE , USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7X),
+        Interface::new(NOTIFICATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7X),
         Interface::new(CONFIGURATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7X)
     ],
-    open: ArctisNova7::open_xbox,
+    open: ArctisNova7::open_xbox
 };
 
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq)]
@@ -55,7 +55,7 @@ impl PowerState {
 struct State {
     power_state: PowerState,
     battery: u8,
-    chat_mix: ChatMix,
+    chat_mix: ChatMix
 }
 
 impl State {
@@ -69,7 +69,22 @@ impl State {
             PowerState::Discharging => BatteryLevel::Level(self.battery)
         }
     }
+}
 
+fn update_state(state: &AtomicCell<State>, f: impl Fn(&mut State)) {
+    let mut previous_state = state.load();
+    loop {
+        let mut current_state = previous_state;
+        f(&mut current_state);
+
+        match state.compare_exchange(previous_state, current_state) {
+            Ok(_) => break,
+            Err(current) => {
+                previous_state = current;
+                tracing::trace!("compare exchange failed!")
+            }
+        }
+    }
 }
 
 pub struct ArctisNova7 {
@@ -80,7 +95,6 @@ pub struct ArctisNova7 {
 }
 
 impl ArctisNova7 {
-
     async fn open(strings: DeviceStrings, pid: u16, update_channel: UpdateChannel, interfaces: &InterfaceMap) -> DeviceResult<BoxedDevice> {
         debug_assert!(AtomicCell::<State>::is_lock_free());
         let config_channel = interfaces
@@ -104,14 +118,13 @@ impl ArctisNova7 {
             update_task,
             config_channel,
             strings,
-            state,
+            state
         }))
     }
 
     pub fn open_xbox(update_channel: UpdateChannel, interfaces: &InterfaceMap) -> BoxedDeviceFuture {
         Box::pin(Self::open(ARCTIS_NOVA_7X.strings, PID_ARCTIS_NOVA_7X, update_channel, interfaces))
     }
-
 }
 
 const STATUS_BUF_SIZE: usize = 8;
@@ -130,7 +143,10 @@ async fn load_state(config_interface: &HidDevice) -> DeviceResult<State> {
         .then(|| normalize_battery_level(buffer[3]))
         .unwrap_or_default();
     state.chat_mix = (state.power_state != PowerState::Offline)
-        .then_some(ChatMix { game: buffer[5], chat: buffer[6] })
+        .then_some(ChatMix {
+            game: buffer[5],
+            chat: buffer[6]
+        })
         .unwrap_or_default();
 
     Ok(state)
@@ -144,22 +160,16 @@ async fn listen_for_updates(notification_interface: HidDevice, events: UpdateCha
             Ok(size) => {
                 debug_assert_eq!(size, buf.len());
                 if let Some(update) = parse_status_update(&buf[1..]) {
-                    while {
-                        let previous_state = state.load();
-                        let mut current_state = previous_state;
-                        match update {
-                            StatusUpdate::PowerState(ps) => current_state.power_state = ps,
-                            StatusUpdate::Battery(level) => current_state.battery = level,
-                            StatusUpdate::ChatMix(mix) => current_state.chat_mix = mix
-                        }
-                        state.compare_exchange(previous_state, current_state).is_err()
-                    } { tracing::trace!("compare exchange failed!") }
+                    update_state(&state, |state| match update {
+                        StatusUpdate::PowerState(ps) => state.power_state = ps,
+                        StatusUpdate::Battery(level) => state.battery = level,
+                        StatusUpdate::ChatMix(mix) => state.chat_mix = mix
+                    });
                     events.send_event(DeviceUpdate::from(update)).unwrap();
                 }
             }
-            Err(err) => println!("notification task: {}", err),
+            Err(err) => println!("notification task: {}", err)
         }
-
     }
 }
 
@@ -188,7 +198,7 @@ fn parse_status_update(data: &[u8]) -> Option<StatusUpdate> {
     match data[0] {
         CHAT_MIX_CHANGED => Some(StatusUpdate::ChatMix(ChatMix {
             game: data[1],
-            chat: data[2],
+            chat: data[2]
         })),
         POWER_STATE_CHANGED => Some(StatusUpdate::PowerState(PowerState::from_u8(data[1]))),
         BATTERY_LEVEL_CHANGED => Some(StatusUpdate::Battery(normalize_battery_level(data[1]))),
@@ -221,14 +231,12 @@ impl Device for ArctisNova7 {
 
     fn get_battery_status(&self) -> Option<BatteryLevel> {
         Some(self.state.load().battery())
-
     }
 
     fn get_chat_mix(&self) -> Option<ChatMix> {
         Some(self.state.load().chat_mix)
     }
 }
-
 
 /*
 pub struct ArcticsNova7 {
