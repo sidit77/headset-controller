@@ -91,6 +91,7 @@ impl ArctisNova7 {
 
         let state = Arc::new(AtomicCell::new(load_state(&config_channel).await?));
 
+        //TODO open as read-only
         let notification_interface = interfaces
             .get(&Interface::new(NOTIFICATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, pid))
             .unwrap()
@@ -153,8 +154,7 @@ async fn listen_for_updates(notification_interface: HidDevice, events: UpdateCha
                         }
                         state.compare_exchange(previous_state, current_state).is_err()
                     } { tracing::trace!("compare exchange failed!") }
-
-                    events.send_event(DeviceUpdate::ConnectionStatusChanged).unwrap();
+                    events.send_event(DeviceUpdate::from(update)).unwrap();
                 }
             }
             Err(err) => println!("notification task: {}", err),
@@ -168,6 +168,17 @@ enum StatusUpdate {
     PowerState(PowerState),
     Battery(u8),
     ChatMix(ChatMix)
+}
+
+impl From<StatusUpdate> for DeviceUpdate {
+    fn from(value: StatusUpdate) -> Self {
+        //This mapping is not fully correct but it's good enough
+        match value {
+            StatusUpdate::PowerState(_) => Self::ConnectionChanged,
+            StatusUpdate::Battery(_) => Self::BatteryLevel,
+            StatusUpdate::ChatMix(_) => Self::ChatMixChanged
+        }
+    }
 }
 
 fn parse_status_update(data: &[u8]) -> Option<StatusUpdate> {

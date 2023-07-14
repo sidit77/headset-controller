@@ -139,7 +139,9 @@ impl SupportedDevice {
 
 #[derive(Debug, Clone)]
 pub enum DeviceUpdate {
-    ConnectionStatusChanged
+    ConnectionChanged,
+    ChatMixChanged,
+    BatteryLevel
 }
 
 pub trait Device {
@@ -245,64 +247,6 @@ impl DeviceManager {
         None
     }
 }
-
-/*
-pub struct DeviceManager {
-    api: HidApi,
-    devices: Vec<BoxedSupportedDevice>
-}
-
-impl DeviceManager {
-    pub fn new() -> DeviceResult<Self> {
-        let api = HidApi::new()?;
-        let mut result = Self { api, devices: Vec::new() };
-        result.find_supported_devices();
-        Ok(result)
-    }
-
-    #[instrument(skip_all)]
-    fn find_supported_devices(&mut self) {
-        self.devices.clear();
-        self.api
-            .device_list()
-            .flat_map(|info| SUPPORTED_DEVICES.iter().filter_map(|check| check(info)))
-            .chain(DUMMY_DEVICE
-                .then::<Box<dyn SupportedDevice>, _>(|| Box::new(DummyDevice)))
-            .for_each(|dev| {
-                tracing::debug!("Found {}", dev.name());
-                self.devices.push(dev);
-            });
-    }
-
-    pub fn refresh(&mut self) -> DeviceResult<()> {
-        self.api.refresh_devices()?;
-        self.find_supported_devices();
-        Ok(())
-    }
-
-    pub fn supported_devices(&self) -> &Vec<BoxedSupportedDevice> {
-        &self.devices
-    }
-
-    pub fn open(&self, supported: &dyn SupportedDevice) -> DeviceResult<BoxedDevice> {
-        supported.open(&self.api)
-    }
-
-    #[instrument(skip(self))]
-    pub fn find_preferred_device(&self, preference: &Option<String>) -> Option<BoxedDevice> {
-        preference
-            .iter()
-            .flat_map(|pref| self.devices.iter().filter(move |dev| dev.name() == pref))
-            .chain(self.devices.iter())
-            .filter_map(|dev| {
-                self.open(dev.as_ref())
-                    .map_err(|err| tracing::error!("Failed to open device: {:?}", err))
-                    .ok()
-            })
-            .next()
-    }
-}
-*/
 
 pub type DeviceResult<T> = Result<T, EyreError>;
 
