@@ -21,6 +21,15 @@ const USAGE_ID: u16 = 0x1;
 const NOTIFICATION_USAGE_PAGE: u16 = 0xFF00;
 const CONFIGURATION_USAGE_PAGE: u16 = 0xFFC0;
 
+pub const ARCTIS_NOVA_7: SupportedDevice = SupportedDevice {
+    strings: DeviceStrings::new("Steelseries Arctis Nova 7", "Steelseries", "Arctis Nova 7"),
+    required_interfaces: &[
+        Interface::new(NOTIFICATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7),
+        Interface::new(CONFIGURATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7)
+    ],
+    open: ArctisNova7::open_pc
+};
+
 pub const ARCTIS_NOVA_7X: SupportedDevice = SupportedDevice {
     strings: DeviceStrings::new("Steelseries Arctis Nova 7X", "Steelseries", "Arctis Nova 7X"),
     required_interfaces: &[
@@ -28,6 +37,15 @@ pub const ARCTIS_NOVA_7X: SupportedDevice = SupportedDevice {
         Interface::new(CONFIGURATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7X)
     ],
     open: ArctisNova7::open_xbox
+};
+
+pub const ARCTIS_NOVA_7P: SupportedDevice = SupportedDevice {
+    strings: DeviceStrings::new("Steelseries Arctis Nova 7P", "Steelseries", "Arctis Nova 7P"),
+    required_interfaces: &[
+        Interface::new(NOTIFICATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7P),
+        Interface::new(CONFIGURATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7P)
+    ],
+    open: ArctisNova7::open_playstation
 };
 
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq)]
@@ -124,6 +142,14 @@ impl ArctisNova7 {
 
     pub fn open_xbox(update_channel: UpdateChannel, interfaces: &InterfaceMap) -> BoxedDeviceFuture {
         Box::pin(Self::open(ARCTIS_NOVA_7X.strings, PID_ARCTIS_NOVA_7X, update_channel, interfaces))
+    }
+
+    pub fn open_playstation(update_channel: UpdateChannel, interfaces: &InterfaceMap) -> BoxedDeviceFuture {
+        Box::pin(Self::open(ARCTIS_NOVA_7P.strings, PID_ARCTIS_NOVA_7P, update_channel, interfaces))
+    }
+
+    pub fn open_pc(update_channel: UpdateChannel, interfaces: &InterfaceMap) -> BoxedDeviceFuture {
+        Box::pin(Self::open(ARCTIS_NOVA_7.strings, PID_ARCTIS_NOVA_7, update_channel, interfaces))
     }
 }
 

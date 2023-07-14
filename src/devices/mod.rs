@@ -12,7 +12,7 @@ use tao::event_loop::EventLoopProxy;
 use tracing::instrument;
 
 use crate::config::{CallAction, DUMMY_DEVICE as DUMMY_DEVICE_ENABLED};
-use crate::devices::arctis_nova_7::ARCTIS_NOVA_7X;
+use crate::devices::arctis_nova_7::{ARCTIS_NOVA_7, ARCTIS_NOVA_7P, ARCTIS_NOVA_7X};
 use crate::devices::dummy::DUMMY_DEVICE;
 
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq)]
@@ -186,7 +186,7 @@ pub trait Device {
 pub type BoxedDevice = Box<dyn Device>;
 pub type BoxedDeviceFuture<'a> = Pin<Box<dyn Future<Output = DeviceResult<BoxedDevice>> + 'a>>;
 
-pub const SUPPORTED_DEVICES: &[SupportedDevice] = &[ARCTIS_NOVA_7X];
+pub const SUPPORTED_DEVICES: &[SupportedDevice] = &[ARCTIS_NOVA_7, ARCTIS_NOVA_7X, ARCTIS_NOVA_7P];
 
 #[derive(Debug, Clone, Default)]
 pub struct DeviceManager {
