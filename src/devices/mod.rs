@@ -1,5 +1,5 @@
 mod arctis_nova_7;
-//mod dummy;
+mod dummy;
 
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
@@ -11,9 +11,9 @@ use color_eyre::eyre::Error as EyreError;
 use tao::event_loop::EventLoopProxy;
 use tracing::instrument;
 
-use crate::config::CallAction;
+use crate::config::{CallAction, DUMMY_DEVICE as DUMMY_DEVICE_ENABLED};
 use crate::devices::arctis_nova_7::ARCTIS_NOVA_7X;
-//use crate::devices::dummy::DummyDevice;
+use crate::devices::dummy::DUMMY_DEVICE;
 
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u16)]
@@ -215,6 +215,8 @@ impl DeviceManager {
         self.devices.extend(
             SUPPORTED_DEVICES
                 .iter()
+                .chain(DUMMY_DEVICE_ENABLED
+                    .then_some(&DUMMY_DEVICE))
                 .filter(|dev| {
                     dev.required_interfaces
                         .iter()

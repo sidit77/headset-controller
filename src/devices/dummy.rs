@@ -1,44 +1,29 @@
-use std::time::Duration;
+use std::future::ready;
 
-use hidapi::HidApi;
-use once_cell::sync::Lazy;
 use tracing::instrument;
 
 use crate::config::CallAction;
-use crate::devices::{
-    BatteryLevel, BluetoothConfig, BoxedDevice, ChatMix, Device, DeviceResult, Equalizer, InactiveTime, Info, MicrophoneLight, MicrophoneVolume,
-    SideTone, SupportedDevice, VolumeLimiter
+use crate::devices::*;
+
+pub const DUMMY_DEVICE: SupportedDevice = SupportedDevice {
+    strings: DeviceStrings::new("DummyDevice", "DummyCorp", "DummyDevice"),
+    required_interfaces: &[],
+    open: create_dummy
 };
+
+fn create_dummy(_: UpdateChannel, _: &InterfaceMap) -> BoxedDeviceFuture {
+    let dummy: BoxedDevice = Box::new(DummyDevice);
+    Box::pin(ready(Ok(dummy)))
+}
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct DummyDevice;
 
-impl SupportedDevice for DummyDevice {
-    fn get_info(&self) -> &Info {
-        static INFO: Lazy<Info> = Lazy::new(|| Info {
-            manufacturer: "DummyCorp".to_string(),
-            product: "DummyDevice".to_string(),
-            name: "DummyDevice".to_string()
-        });
-        &INFO
-    }
-
-    fn open(&self, _: &HidApi) -> DeviceResult<BoxedDevice> {
-        Ok(Box::new(DummyDevice))
-    }
-}
 
 impl Device for DummyDevice {
-    fn get_info(&self) -> &Info {
-        SupportedDevice::get_info(self)
-    }
 
     fn is_connected(&self) -> bool {
         true
-    }
-
-    fn poll(&mut self) -> DeviceResult<Duration> {
-        Ok(Duration::from_secs(2))
     }
 
     fn get_battery_status(&self) -> Option<BatteryLevel> {
@@ -75,6 +60,10 @@ impl Device for DummyDevice {
 
     fn get_mic_light(&self) -> Option<&dyn MicrophoneLight> {
         Some(self)
+    }
+
+    fn strings(&self) -> DeviceStrings {
+        DUMMY_DEVICE.strings
     }
 }
 
