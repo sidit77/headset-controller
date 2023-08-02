@@ -81,7 +81,9 @@ fn main() -> Result<()> {
         .with(layer().without_time())
         .with(layer().with_ansi(false).with_writer(logfile))
         .init();
-    let runtime = Builder::new_multi_thread().enable_time().build()?;
+    let runtime = Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
 
     let span = tracing::info_span!("init").entered();
 
