@@ -30,6 +30,7 @@ crossbeam-utils = "0.8"
 fixed-map = "0.9"
 
 async-hid = { git = "https://github.com/sidit77/async-hid.git"}
+#async-hid = {path = "../async-hid"}
 
 egui = "0.22"
 raw-window-handle = "0.5"

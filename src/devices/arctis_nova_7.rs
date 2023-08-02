@@ -68,7 +68,7 @@ impl PowerState {
     }
 }
 
-#[derive(Default, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
 #[repr(align(8))] //So that AtomicCell<State> becomes lock-free
 struct State {
     power_state: PowerState,
@@ -156,16 +156,16 @@ async fn load_state(config_interface: &HidDevice) -> DeviceResult<State> {
     let mut buffer = [0u8; STATUS_BUF_SIZE];
     //TODO add a timeout
     let size = config_interface.read_input_report(&mut buffer).await?;
-    debug_assert_eq!(size, buffer.len());
+    let buffer = &buffer[..size];
 
-    state.power_state = PowerState::from_u8(buffer[4]);
+    state.power_state = PowerState::from_u8(buffer[3]);
     state.battery = (state.power_state == PowerState::Discharging)
-        .then(|| normalize_battery_level(buffer[3]))
+        .then(|| normalize_battery_level(buffer[2]))
         .unwrap_or_default();
     state.chat_mix = (state.power_state != PowerState::Offline)
         .then_some(ChatMix {
-            game: buffer[5],
-            chat: buffer[6]
+            game: buffer[4],
+            chat: buffer[5]
         })
         .unwrap_or_default();
 
@@ -211,8 +211,9 @@ async fn update_handler(notification_interface: HidDevice, events: UpdateChannel
     loop {
         match notification_interface.read_input_report(&mut buf).await {
             Ok(size) => {
-                debug_assert_eq!(size, buf.len());
-                if let Some(update) = parse_status_update(&buf[1..]) {
+                let buf = &buf[..size];
+                //debug_assert_eq!(size, buf.len());
+                if let Some(update) = parse_status_update(buf) {
                     state.update(|state| match update {
                         StatusUpdate::PowerState(ps) => state.power_state = ps,
                         StatusUpdate::Battery(level) => state.battery = level,
