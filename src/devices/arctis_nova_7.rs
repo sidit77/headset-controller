@@ -1,10 +1,12 @@
 use std::sync::Arc;
+use std::time::Duration;
 
-use async_hid::{AccessMode, Device as HidDevice};
+use async_hid::{AccessMode, Device as HidDevice, HidResult};
 use crossbeam_utils::atomic::AtomicCell;
 use tokio::spawn;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
+use tokio::time::timeout;
 use tracing::instrument;
 
 use crate::config::CallAction;
@@ -174,33 +176,48 @@ async fn load_state(config_interface: &HidDevice) -> DeviceResult<State> {
 
 #[instrument(skip_all)]
 async fn configuration_handler(config_interface: HidDevice, events: UpdateChannel, mut config_requests: UnboundedReceiver<ConfigAction>) {
-    while let Some(request) = config_requests.recv().await {
-        tracing::debug!("Attempting apply config request: {:?}", request);
-        let data = match request {
-            ConfigAction::SetSideTone(level) => vec![0x00, 0x39, level],
-            ConfigAction::SetMicrophoneVolume(level) => vec![0x00, 0x37, level],
-            ConfigAction::EnableVolumeLimiter(enabled) => vec![0x00, 0x3a, u8::from(enabled)],
-            ConfigAction::SetEqualizerLevels(mut levels) => {
-                levels.prepend([0x00, 0x33]);
-                levels
-            }
-            ConfigAction::SetBluetoothCallAction(action) => {
-                let v = match action {
-                    CallAction::Nothing => 0x00,
-                    CallAction::ReduceVolume => 0x01,
-                    CallAction::Mute => 0x02
-                };
-                vec![0x00, 0xb3, v]
-            }
-            ConfigAction::EnableAutoBluetoothActivation(enabled) => vec![0x00, 0xb2, u8::from(enabled)],
-            ConfigAction::SetMicrophoneLightStrength(level) => vec![0x00, 0xae, level],
-            ConfigAction::SetInactiveTime(minutes) => vec![0x00, 0xa3, minutes]
+    let mut config_interface = MaybeHidDevice::from(config_interface);
+
+    loop {
+        let duration = match config_interface.is_connected() {
+            true => Duration::from_secs(20),
+            false => Duration::MAX
         };
-        //TODO close the channel after a timeout
-        config_interface
-            .write_output_report(&data)
-            .await
-            .unwrap_or_else(|err| events.send_log(DeviceUpdate::DeviceError(err)));
+        match timeout(duration, config_requests.recv()).await {
+            Ok(Some(request)) => {
+                tracing::debug!("Attempting apply config request: {:?}", request);
+                let data = match request {
+                    ConfigAction::SetSideTone(level) => vec![0x00, 0x39, level],
+                    ConfigAction::SetMicrophoneVolume(level) => vec![0x00, 0x37, level],
+                    ConfigAction::EnableVolumeLimiter(enabled) => vec![0x00, 0x3a, u8::from(enabled)],
+                    ConfigAction::SetEqualizerLevels(mut levels) => {
+                        levels.prepend([0x00, 0x33]);
+                        levels
+                    }
+                    ConfigAction::SetBluetoothCallAction(action) => {
+                        let v = match action {
+                            CallAction::Nothing => 0x00,
+                            CallAction::ReduceVolume => 0x01,
+                            CallAction::Mute => 0x02
+                        };
+                        vec![0x00, 0xb3, v]
+                    }
+                    ConfigAction::EnableAutoBluetoothActivation(enabled) => vec![0x00, 0xb2, u8::from(enabled)],
+                    ConfigAction::SetMicrophoneLightStrength(level) => vec![0x00, 0xae, level],
+                    ConfigAction::SetInactiveTime(minutes) => vec![0x00, 0xa3, minutes]
+                };
+                //TODO close the channel after a timeout
+                match config_interface.connected(AccessMode::Write).await {
+                    Ok(device) => device
+                        .write_output_report(&data)
+                        .await
+                        .unwrap_or_else(|err| events.send_log(DeviceUpdate::DeviceError(err))),
+                    Err(err) => events.send_log(DeviceUpdate::DeviceError(err))
+                }
+            },
+            Ok(None) => break,
+            Err(_) => config_interface.disconnect()
+        }
     }
     tracing::warn!("Request channel close unexpectedly");
 }
@@ -410,4 +427,47 @@ impl InactiveTime for ArctisNova7 {
         //self.request_config_action(ConfigAction::SetInactiveTime(minutes));
         let _ = ConfigAction::SetInactiveTime(minutes);
     }
+}
+
+
+enum MaybeHidDevice {
+    Connected(HidDevice),
+    Disconnected(DeviceInfo)
+}
+
+impl From<HidDevice> for MaybeHidDevice {
+    fn from(value: HidDevice) -> Self {
+        Self::Connected(value)
+    }
+}
+
+impl MaybeHidDevice {
+
+    fn is_connected(&self) -> bool {
+        matches!(self, MaybeHidDevice::Connected(_))
+    }
+
+    fn disconnect(&mut self) {
+        if let MaybeHidDevice::Connected(device) = self {
+            let info = device.info().clone();
+            *self = MaybeHidDevice::Disconnected(info);
+            tracing::debug!("Disconnecting from the device");
+        }
+    }
+
+    async fn connected(&mut self, mode: AccessMode) -> HidResult<&HidDevice> {
+        match self {
+            MaybeHidDevice::Connected(device) => Ok(device),
+            MaybeHidDevice::Disconnected(info) => {
+                tracing::debug!("Reconnecting to the device");
+                let device = info.open(mode).await?;
+                *self = MaybeHidDevice::Connected(device);
+                match self {
+                    MaybeHidDevice::Connected(device) => Ok(device),
+                    MaybeHidDevice::Disconnected(_) => unreachable!()
+                }
+            }
+        }
+    }
+
 }
