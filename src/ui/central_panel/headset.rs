@@ -34,6 +34,7 @@ pub fn headset_section(
         Checkbox::new(&mut headset.auto_enable_bluetooth, "Auto Enable Bluetooth")
             .ui(ui)
             .submit(debouncer, auto_update, Action::UpdateAutoBluetooth);
+        ui.add_space(10.0);
         let actions = [
             (CallAction::Nothing, "Nothing"),
             (CallAction::ReduceVolume, "Reduce Volume"),

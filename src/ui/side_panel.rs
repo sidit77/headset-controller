@@ -72,6 +72,7 @@ pub fn side_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config, d
         ui.heading("Profiles");
         let resp = ui
             .with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.style_mut().spacing.button_padding = vec2(6.0, 0.0);
                 ui.selectable_label(false, RichText::from("+").heading())
             })
             .inner;

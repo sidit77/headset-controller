@@ -14,7 +14,7 @@ mod backend;
 
 use std::time::Instant;
 
-use egui::{Context, FullOutput, Visuals};
+use egui::{Context, FullOutput, Rounding, Visuals};
 use egui_tao::State;
 use tao::dpi::LogicalSize;
 use tao::event::{Event, WindowEvent};
@@ -71,7 +71,8 @@ impl EguiWindow {
         let painter = window.make_painter();
 
         let ctx = Context::default();
-        ctx.set_visuals(Visuals::light());
+        set_theme(&ctx);
+        //ctx.set_visuals(Visuals::light());
 
         Self {
             window,
@@ -167,4 +168,42 @@ impl Drop for EguiWindow {
     fn drop(&mut self) {
         self.painter.destroy();
     }
+}
+
+pub fn set_theme(ctx: &Context) {
+    ctx.set_visuals(Visuals::light());
+
+    let mut style = (*ctx.style()).clone();
+    style.spacing.slider_width = 200_f32; // slider width can only be set globally
+    //style.spacing.item_spacing = egui::vec2(15.0, 15.0);
+    //style.spacing.button_padding = egui::vec2(10.0, 10.0);
+    style.spacing.button_padding = egui::vec2(5.0, 5.0);
+
+    let visuals = &mut style.visuals;
+    //let mut visuals = Visuals::light();
+
+    let rounding = Rounding::same(7.0);
+
+    //visuals.widgets.active.bg_fill = ACCENT;
+    //visuals.widgets.active.fg_stroke = Stroke::new(1.0, FG);
+    visuals.widgets.active.rounding = rounding;
+
+    //visuals.widgets.inactive.fg_stroke = Stroke::new(1.0, FG);
+    visuals.widgets.inactive.rounding = rounding;
+
+    visuals.widgets.hovered.rounding = rounding;
+
+   // visuals.widgets.open.bg_fill = SEPARATOR_BG;
+    visuals.widgets.open.rounding = rounding;
+
+    //visuals.selection.bg_fill = SELECTED;
+    //visuals.selection.stroke = Stroke::new(1.0, BG);
+
+    //visuals.widgets.noninteractive.bg_fill = BG;
+    //visuals.faint_bg_color = DARKER_BG;
+    //visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0, FG);
+    //visuals.widgets.noninteractive.bg_stroke = Stroke::new(0.5, SEPARATOR_BG);
+    visuals.widgets.noninteractive.rounding = rounding;
+
+    ctx.set_style(style);
 }
