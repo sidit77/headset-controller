@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use async_hid::Device as HidDevice;
+use async_hid::{AccessMode, Device as HidDevice};
 use crossbeam_utils::atomic::AtomicCell;
 use tokio::spawn;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
@@ -103,7 +103,7 @@ impl ArctisNova7 {
         let config_interface = interfaces
             .get(&Interface::new(CONFIGURATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, pid))
             .expect("Failed to find interface in map")
-            .open()
+            .open(AccessMode::ReadWrite)
             .await?;
 
         let state = Arc::new(AtomicCell::new(load_state(&config_interface).await?));
@@ -112,7 +112,7 @@ impl ArctisNova7 {
         let notification_interface = interfaces
             .get(&Interface::new(NOTIFICATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, pid))
             .expect("Failed to find interface in map")
-            .open()
+            .open(AccessMode::Read)
             .await?;
 
         let (config_channel, command_receiver) = unbounded_channel();
