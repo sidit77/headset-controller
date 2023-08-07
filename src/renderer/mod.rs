@@ -193,7 +193,7 @@ pub fn set_theme(ctx: &Context) {
 
     visuals.widgets.hovered.rounding = rounding;
 
-   // visuals.widgets.open.bg_fill = SEPARATOR_BG;
+    // visuals.widgets.open.bg_fill = SEPARATOR_BG;
     visuals.widgets.open.rounding = rounding;
 
     //visuals.selection.bg_fill = SELECTED;

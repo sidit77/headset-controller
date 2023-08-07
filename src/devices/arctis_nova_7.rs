@@ -206,7 +206,6 @@ async fn configuration_handler(config_interface: HidDevice, events: UpdateChanne
                     ConfigAction::SetMicrophoneLightStrength(level) => vec![0x00, 0xae, level],
                     ConfigAction::SetInactiveTime(minutes) => vec![0x00, 0xa3, minutes]
                 };
-                //TODO close the channel after a timeout
                 match config_interface.connected(AccessMode::Write).await {
                     Ok(device) => device
                         .write_output_report(&data)
@@ -214,7 +213,7 @@ async fn configuration_handler(config_interface: HidDevice, events: UpdateChanne
                         .unwrap_or_else(|err| events.send_log(DeviceUpdate::DeviceError(err))),
                     Err(err) => events.send_log(DeviceUpdate::DeviceError(err))
                 }
-            },
+            }
             Ok(None) => break,
             Err(_) => config_interface.disconnect()
         }
@@ -429,7 +428,6 @@ impl InactiveTime for ArctisNova7 {
     }
 }
 
-
 enum MaybeHidDevice {
     Connected(HidDevice),
     Disconnected(DeviceInfo)
@@ -442,7 +440,6 @@ impl From<HidDevice> for MaybeHidDevice {
 }
 
 impl MaybeHidDevice {
-
     fn is_connected(&self) -> bool {
         matches!(self, MaybeHidDevice::Connected(_))
     }
@@ -469,5 +466,4 @@ impl MaybeHidDevice {
             }
         }
     }
-
 }

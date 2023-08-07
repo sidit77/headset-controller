@@ -55,7 +55,10 @@ fn equalizer_ui(ui: &mut Ui, debouncer: &mut Debouncer, auto_update: bool, conf:
         ui.style_mut().spacing.button_padding = vec2(5.0, 2.0);
         ui.style_mut().spacing.interact_size = vec2(30.0, 20.0);
         for i in levels.iter_mut() {
-            let resp = Slider::new(i, range.clone()).vertical().trailing_fill(true).ui(ui);
+            let resp = Slider::new(i, range.clone())
+                .vertical()
+                .trailing_fill(true)
+                .ui(ui);
             if resp.changed() {
                 dirty |= true;
                 current_index = custom_index;

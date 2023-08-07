@@ -8,9 +8,9 @@ use std::pin::Pin;
 
 use async_hid::{DeviceInfo, HidError};
 use color_eyre::eyre::Error as EyreError;
+use futures_lite::stream::StreamExt;
 use tao::event_loop::EventLoopProxy;
 use tracing::instrument;
-use futures_lite::stream::StreamExt;
 
 use crate::config::{CallAction, DUMMY_DEVICE as DUMMY_DEVICE_ENABLED};
 use crate::devices::arctis_nova_7::{ARCTIS_NOVA_7, ARCTIS_NOVA_7P, ARCTIS_NOVA_7X};
