@@ -10,6 +10,7 @@ use async_hid::{DeviceInfo, HidError};
 use color_eyre::eyre::Error as EyreError;
 use tao::event_loop::EventLoopProxy;
 use tracing::instrument;
+use futures_lite::stream::StreamExt;
 
 use crate::config::{CallAction, DUMMY_DEVICE as DUMMY_DEVICE_ENABLED};
 use crate::devices::arctis_nova_7::{ARCTIS_NOVA_7, ARCTIS_NOVA_7P, ARCTIS_NOVA_7X};
@@ -131,12 +132,11 @@ impl DeviceManager {
     #[instrument(skip_all)]
     pub async fn refresh(&mut self) -> DeviceResult<()> {
         self.interfaces.clear();
-        self.interfaces.extend(
-            DeviceInfo::enumerate()
-                .await?
-                .into_iter()
-                .map(|dev| (Interface::from(&dev), dev))
-        );
+        DeviceInfo::enumerate()
+            .await?
+            .map(|dev| (Interface::from(&dev), dev))
+            .for_each(|(info, dev)| _ = self.interfaces.insert(info, dev))
+            .await;
 
         self.devices.clear();
         self.devices.extend(

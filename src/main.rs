@@ -197,6 +197,7 @@ fn main() -> Result<()> {
                             }
                         }
                         Action::RefreshDeviceList => runtime.block_on(async {
+                            device = None;
                             device_manager
                                 .refresh()
                                 .await
