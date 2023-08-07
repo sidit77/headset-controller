@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use async_hid::{AccessMode, Device as HidDevice, HidResult};
 use crossbeam_utils::atomic::AtomicCell;
+use static_assertions::const_assert;
 use tokio::spawn;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
@@ -70,6 +71,7 @@ impl PowerState {
     }
 }
 
+const_assert!(AtomicCell::<State>::is_lock_free());
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
 #[repr(align(8))] //So that AtomicCell<State> becomes lock-free
 struct State {
@@ -101,7 +103,6 @@ pub struct ArctisNova7 {
 
 impl ArctisNova7 {
     async fn open(strings: DeviceStrings, pid: u16, update_channel: UpdateChannel, interfaces: &InterfaceMap) -> DeviceResult<BoxedDevice> {
-        debug_assert!(AtomicCell::<State>::is_lock_free());
         let config_interface = interfaces
             .get(&Interface::new(CONFIGURATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, pid))
             .expect("Failed to find interface in map")
