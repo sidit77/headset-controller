@@ -110,14 +110,15 @@ I don't own a Mac, so I can't test this. It might work or not.
 ## Todo
 
 - [ ] Panic popup
+- [ ] udev rules generator for linux
 - [ ] Normal error handling (show notification)
-- [x] Device selection
+- [ ] more tooltips (language file)
 - [ ] handling device disconnects
+- [x] improve look of the equalizer
+- [x] Device selection
 - [x] Implement the remaining functions for arctis
 - [x] log file?
 - [x] better system tray
-- [ ] improve look of the equalizer
-- [ ] more tooltips (language file)
 - [x] Linux support
 
 ## License
