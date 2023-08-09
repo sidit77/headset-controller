@@ -77,6 +77,13 @@ Prebuilt binaries can be found in the [**GitHub Release Section**](https://githu
 
 Simply download the binary, copy it to your preferred directory, and run it.
 
+#### Linux
+To run this program under a non-root user you also have to install the udev rules
+```bash
+sudo ./headset-control --print-udev-rules > /etc/udev/rules.d/70-headset-controller.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
 ### Building Yourself
 
 This app is built using 🦀*Rust*🦀, so you have to install it to build this project on your own.
@@ -103,6 +110,8 @@ On Linux, some additional packages are required.
 sudo apt install libgtk-3-dev libayatana-appindicator3-dev
 ```
 
+*Don't forget to add the udev rules as described in the prebuilt binaries section.*
+
 #### macOS
 
 I don't own a Mac, so I can't test this. It might work or not.
@@ -110,10 +119,10 @@ I don't own a Mac, so I can't test this. It might work or not.
 ## Todo
 
 - [ ] Panic popup
-- [ ] udev rules generator for linux
 - [ ] Normal error handling (show notification)
 - [ ] more tooltips (language file)
 - [ ] handling device disconnects
+- [x] udev rules generator for linux
 - [x] improve look of the equalizer
 - [x] Device selection
 - [x] Implement the remaining functions for arctis

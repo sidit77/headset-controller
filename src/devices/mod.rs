@@ -1,8 +1,8 @@
 mod arctis_nova_7;
 mod dummy;
 
-use std::collections::HashMap;
-use std::fmt::{Debug, Display, Formatter};
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter, Write};
 use std::future::Future;
 use std::pin::Pin;
 
@@ -183,6 +183,29 @@ impl DeviceManager {
         }
         None
     }
+}
+
+pub fn generate_udev_rules() -> DeviceResult<String> {
+    let mut rules = String::new();
+
+    writeln!(rules, r#"ACTION!="add|change", GOTO="headsets_end""#)?;
+    writeln!(rules, "")?;
+
+    for device in SUPPORTED_DEVICES {
+        writeln!(rules, "# {}", device.strings.name)?;
+        let codes: HashSet<_> = device
+            .required_interfaces
+            .iter()
+            .map(|i| (i.vendor_id, i.product_id))
+            .collect();
+        for (vid, pid) in codes {
+            writeln!(rules, r#"KERNEL=="hidraw*", ATTRS{{idVendor}}=="{vid:04x}", ATTRS{{idProduct}}=="{pid:04x}", TAG+="uaccess""#)?;
+        }
+        writeln!(rules, "")?;
+    }
+
+    writeln!(rules, r#"LABEL="headsets_end""#)?;
+    Ok(rules)
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

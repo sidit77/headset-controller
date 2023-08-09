@@ -66,13 +66,14 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 use crate::audio::AudioSystem;
-use crate::config::{log_file, Config, EqualizerConfig, HeadsetConfig, CLOSE_IMMEDIATELY, START_QUIET};
+use crate::config::{log_file, Config, EqualizerConfig, HeadsetConfig, CLOSE_IMMEDIATELY, START_QUIET, PRINT_UDEV_RULES};
 use crate::debouncer::{Action, Debouncer};
-use crate::devices::{BatteryLevel, BoxedDevice, Device, DeviceManager, DeviceUpdate};
+use crate::devices::{BatteryLevel, BoxedDevice, Device, DeviceManager, DeviceUpdate, generate_udev_rules};
 use crate::renderer::EguiWindow;
 use crate::tray::{AppTray, TrayEvent};
 
 fn main() -> Result<()> {
+    if *PRINT_UDEV_RULES { return Ok(println!("{}", generate_udev_rules()?)); }
     color_eyre::install()?;
     let logfile = Mutex::new(log_file());
     tracing_subscriber::registry()
