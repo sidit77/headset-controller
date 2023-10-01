@@ -10,7 +10,7 @@ codegen-units=1
 
 [features]
 directx = ["egui-d3d11"]
-opengl = ["glutin", "glow", "egui_glow", "glutin-tao"]
+opengl = ["glutin", "glow", "egui_glow", "glutin-winit"]
 default = ["opengl"]
 
 [dependencies]
@@ -33,15 +33,18 @@ fixed-map = "0.9"
 async-hid = { git = "https://github.com/sidit77/async-hid.git"}
 #async-hid = {path = "../async-hid"}
 
-egui = "0.22"
+egui = "0.23"
 raw-window-handle = "0.5"
-tao = { version = "0.20", features = ["tray"] }
-egui-tao = { git = "https://github.com/sidit77/egui-tao.git"}
+winit = "0.28"
+egui-winit = "0.23"
+#tao = { version = "0.20", features = ["tray"] }
+#egui-tao = { git = "https://github.com/sidit77/egui-tao.git"}
 
 glutin = { version = "0.30", optional = true }
 glow = { version = "0.12", optional = true }
-egui_glow = { version = "0.22", optional = true }
-glutin-tao = { git = "https://github.com/sidit77/glutin-tao.git", optional = true }
+egui_glow = { version = "0.23", optional = true }
+glutin-winit = { version = "0.3", optional = true }
+#glutin-tao = { git = "https://github.com/sidit77/glutin-tao.git", optional = true }
 
 egui-d3d11 = { git = "https://github.com/sidit77/egui-d3d11.git", optional = true}
 

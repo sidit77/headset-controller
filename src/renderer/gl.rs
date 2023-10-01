@@ -7,12 +7,12 @@ use glutin::config::ConfigTemplateBuilder;
 use glutin::context::{ContextApi, ContextAttributesBuilder, NotCurrentGlContextSurfaceAccessor, PossiblyCurrentContext};
 use glutin::display::{Display, GetGlDisplay, GlDisplay};
 use glutin::surface::{GlSurface, Surface, SurfaceAttributesBuilder, SwapInterval, WindowSurface};
-use glutin_tao::{finalize_window, ApiPreference, DisplayBuilder, GlWindow};
-use raw_window_handle::HasRawWindowHandle;
-use tao::dpi::PhysicalSize;
-use tao::event_loop::EventLoopWindowTarget;
-use tao::window::{Window, WindowBuilder};
+use glutin_winit::{finalize_window, ApiPrefence, DisplayBuilder, GlWindow};
+use winit::dpi::PhysicalSize;
+use winit::event_loop::EventLoopWindowTarget;
+use winit::window::{Window, WindowBuilder};
 use tracing::instrument;
+use raw_window_handle::HasRawWindowHandle;
 
 pub struct GraphicsWindow {
     window: Window,
@@ -33,7 +33,7 @@ impl GraphicsWindow {
 
         tracing::debug!("trying to get gl_config");
         let (mut window, gl_config) = DisplayBuilder::new()
-            .with_preference(ApiPreference::FallbackEgl)
+            .with_preference(ApiPrefence::FallbackEgl)
             .with_window_builder(Some(window_builder.clone()))
             .build(event_loop, template, |mut configs| {
                 configs

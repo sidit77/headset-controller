@@ -1,7 +1,7 @@
 use std::io::{Error, ErrorKind, Write};
 
 use crossbeam_utils::atomic::AtomicCell;
-use tao::event_loop::EventLoopProxy;
+use winit::event_loop::EventLoopProxy;
 
 pub trait CopySlice<T> {
     fn cloned(self) -> Box<[T]>;

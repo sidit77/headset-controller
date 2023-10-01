@@ -15,10 +15,11 @@ mod backend;
 use std::time::Instant;
 
 use egui::{Context, FullOutput, Rounding, Visuals};
-use egui_tao::State;
-use tao::dpi::LogicalSize;
-use tao::event::{Event, WindowEvent};
-use tao::event_loop::EventLoopWindowTarget;
+use egui_winit::State;
+use raw_window_handle::HasRawWindowHandle;
+use winit::dpi::LogicalSize;
+use winit::event::{Event, WindowEvent};
+use winit::event_loop::EventLoopWindowTarget;
 #[cfg(any(
     target_os = "linux",
     target_os = "dragonfly",
@@ -28,8 +29,8 @@ use tao::event_loop::EventLoopWindowTarget;
 ))]
 use tao::platform::unix::WindowBuilderExtUnix;
 #[cfg(windows)]
-use tao::platform::windows::WindowBuilderExtWindows;
-use tao::window::WindowBuilder;
+use winit::platform::windows::WindowBuilderExtWindows;
+use winit::window::WindowBuilder;
 use tracing::instrument;
 
 use crate::renderer::backend::{GraphicsWindow, Painter};
@@ -74,11 +75,13 @@ impl EguiWindow {
         set_theme(&ctx);
         //ctx.set_visuals(Visuals::light());
 
+        let state = State::new(&window.window());
+
         Self {
             window,
             painter,
             ctx,
-            state: State::new(),
+            state,
             next_repaint: Some(Instant::now())
         }
     }
@@ -88,7 +91,7 @@ impl EguiWindow {
     }
 
     pub fn focus(&self) {
-        self.window.window().set_focus();
+        self.window.window().focus_window();
     }
 
     #[instrument(skip_all)]

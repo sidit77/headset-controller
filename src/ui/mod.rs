@@ -4,7 +4,7 @@ mod side_panel;
 use egui::panel::Side;
 use egui::{CentralPanel, Context, Response, RichText, SidePanel};
 use once_cell::sync::Lazy;
-use tao::window::Icon;
+use winit::window::Icon;
 use tracing::instrument;
 
 use crate::audio::AudioSystem;
@@ -16,7 +16,7 @@ use crate::ui::side_panel::side_panel;
 
 #[cfg(windows)]
 pub static WINDOW_ICON: Lazy<Icon> = Lazy::new(|| {
-    use tao::platform::windows::IconExtWindows;
+    use winit::platform::windows::IconExtWindows;
     Icon::from_resource(32512, None).unwrap()
 });
 

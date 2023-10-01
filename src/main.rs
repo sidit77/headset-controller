@@ -54,9 +54,9 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use color_eyre::Result;
-use tao::event::Event;
-use tao::event_loop::{ControlFlow, EventLoop};
-use tao::platform::run_return::EventLoopExtRunReturn;
+use winit::event::Event;
+use winit::event_loop::{ControlFlow, EventLoop};
+use winit::platform::run_return::EventLoopExtRunReturn;
 use tokio::runtime::Builder;
 use tracing::instrument;
 use tracing_error::ErrorLayer;
@@ -136,42 +136,42 @@ fn main() -> Result<()> {
         }
 
         match event {
-            Event::MenuEvent { menu_id, .. } => {
-                let _span = tracing::info_span!("tray_menu_event").entered();
-                match tray.handle_event(menu_id) {
-                    Some(TrayEvent::Open) => {
-                        audio_system.refresh_devices();
-                        match &mut window {
-                            None => window = Some(EguiWindow::new(event_loop)),
-                            Some(window) => {
-                                window.focus();
-                            }
-                        }
-                    }
-                    Some(TrayEvent::Quit) => {
-                        *control_flow = ControlFlow::Exit;
-                    }
-                    Some(TrayEvent::Profile(id)) => {
-                        let _span = tracing::info_span!("profile_change", id).entered();
-                        if let Some(device) = &device {
-                            let headset = config.get_headset(device.name());
-                            if id as u32 != headset.selected_profile_index {
-                                let len = headset.profiles.len();
-                                if id < len {
-                                    headset.selected_profile_index = id as u32;
-                                    submit_profile_change(&mut debouncer);
-                                    debouncer.submit_all([Action::SaveConfig, Action::UpdateTray]);
-                                } else {
-                                    tracing::warn!(len, "Profile id out of range")
-                                }
-                            } else {
-                                tracing::trace!("Profile already selected");
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
+            //Event::MenuEvent { menu_id, .. } => {
+            //    let _span = tracing::info_span!("tray_menu_event").entered();
+            //    match tray.handle_event(menu_id) {
+            //        Some(TrayEvent::Open) => {
+            //            audio_system.refresh_devices();
+            //            match &mut window {
+            //                None => window = Some(EguiWindow::new(event_loop)),
+            //                Some(window) => {
+            //                    window.focus();
+            //                }
+            //            }
+            //        }
+            //        Some(TrayEvent::Quit) => {
+            //            *control_flow = ControlFlow::Exit;
+            //        }
+            //        Some(TrayEvent::Profile(id)) => {
+            //            let _span = tracing::info_span!("profile_change", id).entered();
+            //            if let Some(device) = &device {
+            //                let headset = config.get_headset(device.name());
+            //                if id as u32 != headset.selected_profile_index {
+            //                    let len = headset.profiles.len();
+            //                    if id < len {
+            //                        headset.selected_profile_index = id as u32;
+            //                        submit_profile_change(&mut debouncer);
+            //                        debouncer.submit_all([Action::SaveConfig, Action::UpdateTray]);
+            //                    } else {
+            //                        tracing::warn!(len, "Profile id out of range")
+            //                    }
+            //                } else {
+            //                    tracing::trace!("Profile already selected");
+            //                }
+            //            }
+            //        }
+            //        _ => {}
+            //    }
+            //}
             Event::NewEvents(_) | Event::LoopDestroyed => {
                 while let Some(action) = debouncer.next() {
                     let _span = tracing::info_span!("debouncer_event", ?action).entered();
