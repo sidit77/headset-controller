@@ -86,12 +86,12 @@ impl<T: Copy + Eq> AtomicCellExt<T> for AtomicCell<T> {
 }
 
 pub trait SenderExt<T> {
-    fn send_log(&self, update: T);
+    fn send_log<I: Into<T>>(&self, update: I);
 }
 
 impl<T> SenderExt<T> for EventLoopProxy<T> {
-    fn send_log(&self, update: T) {
-        self.send_event(update)
+    fn send_log<I: Into<T>>(&self, update: I) {
+        self.send_event(update.into())
             .unwrap_or_else(|_| tracing::warn!("Could not send message because the receiver is closed"))
     }
 }

@@ -13,6 +13,7 @@ use winit::event_loop::EventLoopProxy;
 use tracing::instrument;
 
 use crate::config::{CallAction, DUMMY_DEVICE as DUMMY_DEVICE_ENABLED};
+use crate::CustomEvent;
 use crate::devices::arctis_nova_7::{ARCTIS_NOVA_7, ARCTIS_NOVA_7P, ARCTIS_NOVA_7X};
 use crate::devices::dummy::DUMMY_DEVICE;
 
@@ -88,7 +89,7 @@ impl DeviceStrings {
 }
 
 pub type InterfaceMap = HashMap<Interface, DeviceInfo>;
-pub type UpdateChannel = EventLoopProxy<DeviceUpdate>;
+pub type UpdateChannel = EventLoopProxy<CustomEvent>;
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct SupportedDevice {
     pub strings: DeviceStrings,

@@ -55,7 +55,7 @@ use std::time::{Duration, Instant};
 
 use color_eyre::Result;
 use winit::event::Event;
-use winit::event_loop::{ControlFlow, EventLoop};
+use winit::event_loop::{ControlFlow, EventLoopBuilder};
 use winit::platform::run_return::EventLoopExtRunReturn;
 use tokio::runtime::Builder;
 use tracing::instrument;
@@ -88,7 +88,8 @@ fn main() -> Result<()> {
 
     let mut config = Config::load()?;
 
-    let mut event_loop = EventLoop::with_user_event();
+    let mut event_loop = EventLoopBuilder::with_user_event()
+        .build();
     let event_loop_proxy = event_loop.create_proxy();
 
     let mut audio_system = AudioSystem::new();
@@ -237,11 +238,46 @@ fn main() -> Result<()> {
                     }
                 }
             }
-            Event::UserEvent(event) => match event {
+            Event::UserEvent(CustomEvent::DeviceUpdate(event)) => match event {
                 DeviceUpdate::ConnectionChanged | DeviceUpdate::BatteryLevel => debouncer.submit(Action::UpdateDeviceStatus),
                 DeviceUpdate::DeviceError(err) => tracing::error!("The device return an error: {}", err),
                 DeviceUpdate::ChatMixChanged => {}
             },
+            Event::UserEvent(CustomEvent::TrayEvent(event)) => {
+                let _span = tracing::info_span!("tray_menu_event").entered();
+                match event {
+                    TrayEvent::Open => {
+                        audio_system.refresh_devices();
+                        match &mut window {
+                            None => window = Some(EguiWindow::new(event_loop)),
+                            Some(window) => {
+                                window.focus();
+                            }
+                        }
+                    }
+                    TrayEvent::Quit => {
+                        *control_flow = ControlFlow::Exit;
+                    }
+                    TrayEvent::Profile(id) => {
+                        let _span = tracing::info_span!("profile_change", id).entered();
+                        if let Some(device) = &device {
+                            let headset = config.get_headset(device.name());
+                            if id as u32 != headset.selected_profile_index {
+                                let len = headset.profiles.len();
+                                if id < len {
+                                    headset.selected_profile_index = id as u32;
+                                    submit_profile_change(&mut debouncer);
+                                    debouncer.submit_all([Action::SaveConfig, Action::UpdateTray]);
+                                } else {
+                                    tracing::warn!(len, "Profile id out of range")
+                                }
+                            } else {
+                                tracing::trace!("Profile already selected");
+                            }
+                        }
+                    }
+                }
+            }
             _ => ()
         }
         if !matches!(*control_flow, ControlFlow::ExitWithCode(_)) {
@@ -405,4 +441,22 @@ fn build_notification_text(connected: bool, battery_levels: &[Option<BatteryLeve
         .min()
         .map(|level| format!("{} (Battery: {}%)", msg, level))
         .unwrap_or_else(|| msg.to_string())
+}
+
+#[derive(Debug)]
+pub enum CustomEvent {
+    DeviceUpdate(DeviceUpdate),
+    TrayEvent(TrayEvent)
+}
+
+impl From<DeviceUpdate> for CustomEvent {
+    fn from(value: DeviceUpdate) -> Self {
+        Self::DeviceUpdate(value)
+    }
+}
+
+impl From<TrayEvent> for CustomEvent {
+    fn from(value: TrayEvent) -> Self {
+        Self::TrayEvent(value)
+    }
 }

@@ -1,23 +1,33 @@
-use winit::event_loop::EventLoopWindowTarget;
-//use winit::menu::{ContextMenu, CustomMenuItem, MenuId, MenuItem, MenuItemAttributes};
-//use winit::system_tray::{SystemTray, SystemTrayBuilder};
+use tray_icon::{TrayIcon, TrayIconBuilder};
+use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, Submenu};
+use winit::event_loop::EventLoop;
 
-use crate::ui::WINDOW_ICON;
+use crate::ui::TRAY_ICON;
+use crate::util::SenderExt;
 
 pub struct AppTray {
-    //tray: SystemTray,
-    //menu: TrayMenu
+    tray: TrayIcon
 }
 
 impl AppTray {
-    pub fn new<T>(event_loop: &EventLoopWindowTarget<T>) -> Self {
-        //let (m, menu) = TrayMenu::new(0, |_| ("", false));
-        //let tray = SystemTrayBuilder::new(WINDOW_ICON.clone(), Some(m))
-        //    .build(event_loop)
-        //    .expect("Could not build tray icon");
+    pub fn new<T: From<TrayEvent> + Send>(event_loop: &EventLoop<T>) -> Self {
+        let tray = TrayIconBuilder::new()
+            .with_icon(TRAY_ICON.clone())
+            .build()
+            .expect("Could not build tray icon");
+
+        let proxy = event_loop.create_proxy();
+        MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
+            match event.id.0.parse::<usize>() {
+                Ok(0) => proxy.send_log(TrayEvent::Open),
+                Ok(1) => proxy.send_log(TrayEvent::Quit),
+                Ok(n) => proxy.send_log(TrayEvent::Profile(n - 2)),
+                _ => {}
+            }
+        }));
+
         Self {
-            //tray,
-            //menu
+            tray
         }
     }
 
@@ -25,97 +35,31 @@ impl AppTray {
     where
         F: Fn(usize) -> (&'a str, bool)
     {
-        //self.menu.update(&mut self.tray, profile_count, func)
+        let profiles = Submenu::with_id("profiles", "Profiles", true);
+
+        for i in 0..profile_count {
+            let (title, selected) = func(i);
+            profiles
+                .append(&CheckMenuItem::with_id(2 + i, title, true, selected, None))
+                .unwrap();
+        }
+
+        let menu = Menu::with_items(&[
+            &profiles,
+            &MenuItem::with_id(0,"Open", true, None),
+            &MenuItem::with_id(1, "Quit", true, None)
+        ]).unwrap();
+
+        self.tray.set_menu(Some(Box::new(menu)));
     }
 
     pub fn set_tooltip(&mut self, tooltip: &str) {
-        //self.tray.set_tooltip(tooltip)
+        self.tray
+            .set_tooltip(Some(tooltip))
+            .unwrap_or_else(|err| tracing::warn!("Failed to update tray icon tooltip: {:?}", err));
     }
 
-    pub fn handle_event(&self, id: MenuId) -> Option<TrayEvent> {
-        //self.menu.handle_event(id)
-        None
-    }
 }
-
-pub struct MenuId;
-
-//struct TrayMenu {
-//    profile_buttons: Vec<CustomMenuItem>,
-//    quit_button: CustomMenuItem,
-//    open_button: CustomMenuItem
-//}
-//
-//fn next(id: &mut MenuId) -> MenuId {
-//    id.0 += 1;
-//    *id
-//}
-//
-//impl TrayMenu {
-//    pub fn new<'a, F>(profile_count: usize, func: F) -> (ContextMenu, Self)
-//    where
-//        F: Fn(usize) -> (&'a str, bool)
-//    {
-//        let mut id = MenuId::EMPTY;
-//        let mut menu = ContextMenu::new();
-//        let mut profiles = ContextMenu::new();
-//        let mut profile_buttons = Vec::new();
-//        for i in 0..profile_count {
-//            let (name, selected) = func(i);
-//            let item = MenuItemAttributes::new(name)
-//                .with_id(next(&mut id))
-//                .with_selected(selected);
-//            profile_buttons.push(profiles.add_item(item));
-//        }
-//        menu.add_submenu("Profiles", profile_count > 0, profiles);
-//        menu.add_native_item(MenuItem::Separator);
-//        let open_button = menu.add_item(MenuItemAttributes::new("Open").with_id(next(&mut id)));
-//        let quit_button = menu.add_item(MenuItemAttributes::new("Quit").with_id(next(&mut id)));
-//        (
-//            menu,
-//            Self {
-//                profile_buttons,
-//                quit_button,
-//                open_button
-//            }
-//        )
-//    }
-//
-//    pub fn update<'a, F>(&mut self, tray: &mut SystemTray, profile_count: usize, func: F)
-//    where
-//        F: Fn(usize) -> (&'a str, bool)
-//    {
-//        if profile_count == self.profile_buttons.len() {
-//            tracing::trace!("Reusing existing menu");
-//            for (i, button) in self.profile_buttons.iter_mut().enumerate() {
-//                let (name, selected) = func(i);
-//                tracing::trace!(name, selected);
-//                button.set_title(name);
-//                button.set_selected(selected);
-//            }
-//        } else {
-//            tracing::trace!("Creating new menu");
-//            let (m, menu) = Self::new(profile_count, func);
-//            tray.set_menu(&m);
-//            *self = menu;
-//        }
-//    }
-//
-//    pub fn handle_event(&self, id: MenuId) -> Option<TrayEvent> {
-//        if self.open_button.clone().id() == id {
-//            return Some(TrayEvent::Open);
-//        }
-//        if self.quit_button.clone().id() == id {
-//            return Some(TrayEvent::Quit);
-//        }
-//        for (i, profile) in self.profile_buttons.iter().enumerate() {
-//            if profile.clone().id() == id {
-//                return Some(TrayEvent::Profile(i));
-//            }
-//        }
-//        None
-//    }
-//}
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum TrayEvent {

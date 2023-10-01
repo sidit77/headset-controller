@@ -16,7 +16,6 @@ use std::time::Instant;
 
 use egui::{Context, FullOutput, Rounding, Visuals};
 use egui_winit::State;
-use raw_window_handle::HasRawWindowHandle;
 use winit::dpi::LogicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoopWindowTarget;

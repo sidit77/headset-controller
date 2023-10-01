@@ -5,6 +5,7 @@ use egui::panel::Side;
 use egui::{CentralPanel, Context, Response, RichText, SidePanel};
 use once_cell::sync::Lazy;
 use winit::window::Icon;
+use tray_icon::Icon as TrayIcon;
 use tracing::instrument;
 
 use crate::audio::AudioSystem;
@@ -18,6 +19,11 @@ use crate::ui::side_panel::side_panel;
 pub static WINDOW_ICON: Lazy<Icon> = Lazy::new(|| {
     use winit::platform::windows::IconExtWindows;
     Icon::from_resource(32512, None).unwrap()
+});
+
+#[cfg(windows)]
+pub static TRAY_ICON: Lazy<TrayIcon> = Lazy::new(|| {
+    TrayIcon::from_resource(32512, None).unwrap()
 });
 
 #[cfg(not(windows))]

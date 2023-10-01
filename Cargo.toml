@@ -37,6 +37,7 @@ egui = "0.23"
 raw-window-handle = "0.5"
 winit = "0.28"
 egui-winit = "0.23"
+tray-icon = "0.9"
 #tao = { version = "0.20", features = ["tray"] }
 #egui-tao = { git = "https://github.com/sidit77/egui-tao.git"}
 
