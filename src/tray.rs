@@ -1,5 +1,5 @@
 use tray_icon::{TrayIcon, TrayIconBuilder};
-use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, Submenu};
+use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use winit::event_loop::EventLoop;
 
 use crate::ui::TRAY_ICON;
@@ -46,6 +46,7 @@ impl AppTray {
 
         let menu = Menu::with_items(&[
             &profiles,
+            &PredefinedMenuItem::separator(),
             &MenuItem::with_id(0,"Open", true, None),
             &MenuItem::with_id(1, "Quit", true, None)
         ]).unwrap();
