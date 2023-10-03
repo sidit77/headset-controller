@@ -19,14 +19,14 @@ use egui_winit::State;
 use winit::dpi::LogicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoopWindowTarget;
-#[cfg(any(
-    target_os = "linux",
-    target_os = "dragonfly",
-    target_os = "freebsd",
-    target_os = "netbsd",
-    target_os = "openbsd"
-))]
-use tao::platform::unix::WindowBuilderExtUnix;
+//#[cfg(any(
+//    target_os = "linux",
+//    target_os = "dragonfly",
+//    target_os = "freebsd",
+//    target_os = "netbsd",
+//    target_os = "openbsd"
+//))]
+//use tao::platform::unix::WindowBuilderExtUnix;
 #[cfg(windows)]
 use winit::platform::windows::WindowBuilderExtWindows;
 use winit::window::WindowBuilder;
@@ -55,16 +55,16 @@ impl EguiWindow {
         #[cfg(windows)]
         let window_builder = window_builder.with_drag_and_drop(false);
 
-        #[cfg(any(
-            target_os = "linux",
-            target_os = "dragonfly",
-            target_os = "freebsd",
-            target_os = "netbsd",
-            target_os = "openbsd"
-        ))]
-        let window_builder = window_builder
-            .with_double_buffered(false)
-            .with_app_paintable(true);
+        //#[cfg(any(
+        //    target_os = "linux",
+        //    target_os = "dragonfly",
+        //    target_os = "freebsd",
+        //    target_os = "netbsd",
+        //    target_os = "openbsd"
+        //))]
+        //let window_builder = window_builder
+        //    .with_double_buffered(false)
+        //    .with_app_paintable(true);
 
         let window = GraphicsWindow::new(window_builder, event_loop);
 

@@ -37,7 +37,7 @@ egui = "0.23"
 raw-window-handle = "0.5"
 winit = "0.28"
 egui-winit = "0.23"
-tray-icon = "0.9"
+tray-icon = { version = "0.9", default-features = false }
 #tao = { version = "0.20", features = ["tray"] }
 #egui-tao = { git = "https://github.com/sidit77/egui-tao.git"}
 
@@ -52,6 +52,9 @@ egui-d3d11 = { git = "https://github.com/sidit77/egui-d3d11.git", optional = tru
 [target."cfg(not(target_os = \"windows\"))".dependencies]
 notify-rust = "4.7"
 png = "0.17"
+
+[target."cfg(target_os = \"linux\")".dependencies]
+gtk = "*"
 
 [target."cfg(target_os = \"windows\")".dependencies]
 com-policy-config = "0.3"

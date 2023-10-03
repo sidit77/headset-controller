@@ -27,14 +27,27 @@ pub static TRAY_ICON: Lazy<TrayIcon> = Lazy::new(|| {
 });
 
 #[cfg(not(windows))]
-pub static WINDOW_ICON: Lazy<Icon> = Lazy::new(|| {
+static ICON_DATA: Lazy<(Vec<u8>, u32, u32)> = Lazy::new(|| {
     let mut decoder = png::Decoder::new(include_bytes!("../../resources/icon.png").as_slice());
     decoder.set_transformations(png::Transformations::EXPAND);
     let mut reader = decoder.read_info().unwrap();
     let mut buf = vec![0u8; reader.output_buffer_size()];
     let info = reader.next_frame(&mut buf).unwrap();
-    Icon::from_rgba(buf, info.width, info.height).unwrap()
+    (buf, info.width, info.height)
 });
+
+#[cfg(not(windows))]
+pub static WINDOW_ICON: Lazy<Icon> = Lazy::new(|| {
+    let (buf, width, height) = ICON_DATA.clone();
+    Icon::from_rgba(buf, width, height).unwrap()
+});
+
+#[cfg(not(windows))]
+pub static TRAY_ICON: Lazy<TrayIcon> = Lazy::new(|| {
+    let (buf, width, height) = ICON_DATA.clone();
+    TrayIcon::from_rgba(buf, width, height).unwrap()
+});
+
 
 #[instrument(skip_all)]
 pub fn config_ui(
