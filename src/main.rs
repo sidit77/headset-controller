@@ -70,7 +70,7 @@ use tokio::spawn;
 
 use crate::audio::AudioSystem;
 use crate::config::{Config, EqualizerConfig, HeadsetConfig, CLOSE_IMMEDIATELY, START_QUIET, PRINT_UDEV_RULES};
-use crate::debouncer::{Action, ActionReceiver, ActionSender, Debouncer, debouncer};
+use crate::debouncer::{Action, ActionReceiver, ActionProxy, Debouncer, debouncer, ActionSender};
 use crate::devices::{BatteryLevel, BoxedDevice, Device, DeviceList, DeviceUpdate, generate_udev_rules};
 use crate::renderer::EguiWindow;
 use crate::tray::{AppTray, TrayEvent};
@@ -89,20 +89,20 @@ fn main() -> Result<()> {
 
     let span = tracing::info_span!("init").entered();
 
-    let mut config = Config::load()?;
+    let config = Arc::new(Mutex::new(Config::load()?));
 
-    let mut event_loop = EventLoop::with_user_event();
+    let mut event_loop = EventLoop::new();
 
     let mut audio_system = AudioSystem::new();
 
     let device_manager = Arc::new(Mutex::new(DeviceList::empty()));
     let device: Arc<Mutex<Option<BoxedDevice>>> = Arc::new(Mutex::new(None));
 
-    let mut tray = AppTray::new(&event_loop);
+    //let tray = AppTray::new(&event_loop);
 
     let mut window: Option<EguiWindow> = START_QUIET.not().then(|| EguiWindow::new(&event_loop));
 
-    let (action_sender, action_receiver) = debouncer();
+    let (mut action_sender, action_receiver) = debouncer();
     let mut debouncer = Debouncer::new();
 
     action_sender.submit_all([Action::UpdateSystemAudio, Action::UpdateTrayTooltip, Action::UpdateTray]);
@@ -112,12 +112,13 @@ fn main() -> Result<()> {
     let runtime = {
         let device_manager = device_manager.clone();
         let device = device.clone();
+        let config = config.clone();
         std::thread::spawn(move || {
             Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .expect("Failed to start runtime")
-                .block_on(action_handler(action_receiver, device_manager, device))
+                .block_on(action_handler(action_receiver, device_manager, device, config))
         })
     };
 
@@ -127,16 +128,17 @@ fn main() -> Result<()> {
             .map(|w| {
                 w.handle_events(&event, |egui_ctx| {
                     let device = device.lock();
+                    let mut config = config.lock();
                     match device.as_ref() {
                         Some(device) => ui::config_ui(
                             egui_ctx,
-                            &action_sender,
+                            &mut action_sender,
                             &mut config,
                             device.as_ref(),
                             device_manager.as_ref(),
                             &mut audio_system
                         ),
-                        None => ui::no_device_ui(egui_ctx, &action_sender)
+                        None => ui::no_device_ui(egui_ctx, &mut action_sender)
                     }
                 })
             })
@@ -150,6 +152,7 @@ fn main() -> Result<()> {
         }
 
         match event {
+            /*
             Event::MenuEvent { menu_id, .. } => {
                 let _span = tracing::info_span!("tray_menu_event").entered();
                 match tray.handle_event(menu_id) {
@@ -169,6 +172,7 @@ fn main() -> Result<()> {
                         let _span = tracing::info_span!("profile_change", id).entered();
                         let device = device.lock();
                         if let Some(device) = device.as_ref() {
+                            let mut config = config.lock();
                             let headset = config.get_headset(device.name());
                             if id as u32 != headset.selected_profile_index {
                                 let len = headset.profiles.len();
@@ -187,54 +191,44 @@ fn main() -> Result<()> {
                     _ => {}
                 }
             }
+             */
             Event::NewEvents(_) | Event::LoopDestroyed => {
                 while let Some(action) = debouncer.next() {
                     let _span = tracing::info_span!("debouncer_event", ?action).entered();
                     tracing::trace!("Processing event");
                     match action {
-                        Action::SwitchDevice => {
-                            let mut device = device.lock();
-                            if config.preferred_device != device.as_ref().map(|d| d.name().to_string()) {
-                                //*device = runtime.block_on(async {
-                                //    device_manager
-                                //        .lock()
-                                //        .find_preferred_device(&config.preferred_device, event_loop_proxy.clone())
-                                //        .await
-                                //});
-                                submit_full_change(&action_sender);
-                                action_sender.submit_all([Action::UpdateTray, Action::UpdateTrayTooltip]);
-                            } else {
-                                tracing::debug!("Preferred device is already active")
-                            }
-                        }
+
                         Action::UpdateSystemAudio => {
                             let device = device.lock();
                             if let Some(device) = device.as_ref() {
+                                let mut config = config.lock();
                                 let headset = config.get_headset(device.name());
                                 audio_system.apply(&headset.os_audio, device.is_connected())
                             }
                         }
                         Action::SaveConfig => {
                             config
+                                .lock()
                                 .save()
                                 .unwrap_or_else(|err| tracing::warn!("Could not save config: {:?}", err));
                         }
-                        Action::UpdateTray => update_tray(&mut tray, &mut config, device.lock().as_ref().map(|d| d.name())),
-                        Action::UpdateTrayTooltip => update_tray_tooltip(&mut tray, &device.lock()),
+                        Action::UpdateTray => {
+                            //let mut config = config.lock();
+                            //update_tray(&mut tray, &mut config, device.lock().as_ref().map(|d| d.name()))
+                        },
+                        Action::UpdateTrayTooltip => {
+                            //update_tray_tooltip(&mut tray, &device.lock())
+                        },
                         action => {
                             let device = device.lock();
                             if let Some(device) = device.as_ref() {
+                                let mut config = config.lock();
                                 let headset = config.get_headset(device.name());
                                 apply_config_to_device(action, device.as_ref(), headset)
                             }
                         }
                     }
                 }
-            }
-            Event::UserEvent(event) => match event {
-                DeviceUpdate::ConnectionChanged | DeviceUpdate::BatteryLevel => action_sender.submit(Action::UpdateDeviceStatus),
-                DeviceUpdate::DeviceError(err) => tracing::error!("The device return an error: {}", err),
-                DeviceUpdate::ChatMixChanged => {}
             },
             _ => ()
         }
@@ -258,12 +252,22 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-async fn action_handler(mut action_receiver: ActionReceiver, device_manager: Arc<Mutex<DeviceList>>, device: Arc<Mutex<Option<BoxedDevice>>>) {
+async fn action_handler(
+    mut action_receiver: ActionReceiver,
+    device_manager: Arc<Mutex<DeviceList>>,
+    device: Arc<Mutex<Option<BoxedDevice>>>,
+    config: Arc<Mutex<Config>>) {
+
     let (device_update_sender, device_update_receiver) = flume::unbounded();
 
     spawn(async move {
         while let Ok(update) = device_update_receiver.recv_async().await {
             println!("DeviceUpdate: {:?}", update);
+            //match event {
+            //    DeviceUpdate::ConnectionChanged | DeviceUpdate::BatteryLevel => action_sender.submit(Action::UpdateDeviceStatus),
+            //    DeviceUpdate::DeviceError(err) => tracing::error!("The device return an error: {}", err),
+            //    DeviceUpdate::ChatMixChanged => {}
+            //}
         }
     });
 
@@ -275,7 +279,7 @@ async fn action_handler(mut action_receiver: ActionReceiver, device_manager: Arc
         });
     *device.lock() = device_manager
         .lock()
-        .find_preferred_device(&None, device_update_sender.clone())
+        .find_preferred_device(&config.lock().preferred_device, device_update_sender.clone())
         .await;
 
     let mut last_connected = false;
@@ -312,44 +316,27 @@ async fn action_handler(mut action_receiver: ActionReceiver, device_manager: Arc
                         tracing::warn!("Failed to refresh devices: {}", err);
                         DeviceList::empty()
                     });
-
                 *device_manager.lock() = list;
-                //device_manager
-                //    .refresh()
-                //    .await
-                //    .unwrap_or_else(|err| tracing::warn!("Failed to refresh devices: {}", err))
             },
+            Action::SwitchDevice => {
+                let mut device = device.lock();
+                let preferred_device = config.lock().preferred_device.clone();
+                if preferred_device != device.as_ref().map(|d| d.name().to_string()) {
+                    *device = device_manager
+                            .lock()
+                            .find_preferred_device(&preferred_device, device_update_sender.clone())
+                            .await;
+                    action_receiver.submit_full_change();
+                    action_receiver.submit_all([Action::UpdateTray, Action::UpdateTrayTooltip]);
+                } else {
+                    tracing::debug!("Preferred device is already active")
+                }
+            }
             _ => {
 
             }
         }
     }
-}
-
-#[instrument(skip_all)]
-fn submit_profile_change(debouncer: &ActionSender) {
-    let actions = [
-        Action::UpdateSideTone,
-        Action::UpdateEqualizer,
-        Action::UpdateMicrophoneVolume,
-        Action::UpdateVolumeLimit
-    ];
-    debouncer.submit_all(actions);
-    debouncer.force_all(actions);
-}
-
-#[instrument(skip_all)]
-fn submit_full_change(debouncer: &ActionSender) {
-    submit_profile_change(debouncer);
-    let actions = [
-        Action::UpdateMicrophoneLight,
-        Action::UpdateInactiveTime,
-        Action::UpdateBluetoothCall,
-        Action::UpdateAutoBluetooth,
-        Action::UpdateSystemAudio
-    ];
-    debouncer.submit_all(actions);
-    debouncer.force_all(actions);
 }
 
 #[instrument(skip_all, fields(name = %device.name()))]

@@ -2,12 +2,12 @@ use egui::*;
 use tracing::instrument;
 
 use crate::config::{EqualizerConfig, Profile};
-use crate::debouncer::{Action, ActionSender};
+use crate::debouncer::{Action, ActionProxy, ActionSender};
 use crate::devices::{Device, Equalizer};
 use crate::ui::ResponseExt;
 
 #[instrument(skip_all)]
-pub fn profile_section(ui: &mut Ui, sender: &ActionSender, auto_update: bool, profile: &mut Profile, device: &dyn Device) {
+pub fn profile_section(ui: &mut Ui, sender: &mut ActionProxy, auto_update: bool, profile: &mut Profile, device: &dyn Device) {
     if let Some(equalizer) = device.get_equalizer() {
         equalizer_ui(ui, sender, auto_update, &mut profile.equalizer, equalizer);
         ui.add_space(10.0);
@@ -35,7 +35,7 @@ pub fn profile_section(ui: &mut Ui, sender: &ActionSender, auto_update: bool, pr
     }
 }
 
-fn equalizer_ui(ui: &mut Ui, sender: &ActionSender, auto_update: bool, conf: &mut EqualizerConfig, equalizer: &dyn Equalizer) {
+fn equalizer_ui(ui: &mut Ui, sender: &mut ActionProxy, auto_update: bool, conf: &mut EqualizerConfig, equalizer: &dyn Equalizer) {
     let range = (equalizer.base_level() - equalizer.variance())..=(equalizer.base_level() + equalizer.variance());
     let mut presets = equalizer
         .presets()

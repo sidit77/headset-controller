@@ -3,12 +3,11 @@ use parking_lot::Mutex;
 use tracing::instrument;
 
 use crate::config::{Config, Profile};
-use crate::debouncer::{Action, ActionSender};
+use crate::debouncer::{Action, ActionProxy, ActionSender};
 use crate::devices::{Device, DeviceList};
-use crate::submit_profile_change;
 
 #[instrument(skip_all)]
-pub fn side_panel(ui: &mut Ui, sender: &ActionSender, config: &mut Config, device: &dyn Device, device_list: &Mutex<DeviceList>) {
+pub fn side_panel(ui: &mut Ui, sender: &mut ActionProxy, config: &mut Config, device: &dyn Device, device_list: &Mutex<DeviceList>) {
     ui.style_mut()
         .text_styles
         .get_mut(&TextStyle::Body)
@@ -121,7 +120,7 @@ pub fn side_panel(ui: &mut Ui, sender: &ActionSender, config: &mut Config, devic
                 }
             }
             if headset.selected_profile_index != old_profile_index {
-                submit_profile_change(sender);
+                sender.submit_profile_change();
                 sender.submit_all([Action::SaveConfig, Action::UpdateTray]);
             }
         });

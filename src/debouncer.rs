@@ -49,15 +49,58 @@ enum ActionOp {
     Force(Action)
 }
 
+pub trait ActionSender {
+    fn submit(&mut self, action: Action);
+    fn force(&mut self, action: Action);
+
+    fn submit_all(&mut self, actions: impl IntoIterator<Item=Action>) {
+        for action in actions {
+            self.submit(action);
+        }
+    }
+
+    fn force_all(&mut self, actions: impl IntoIterator<Item=Action>) {
+        for action in actions {
+            self.force(action);
+        }
+    }
+
+    #[instrument(skip_all)]
+    fn submit_profile_change(&mut self) {
+        let actions = [
+            Action::UpdateSideTone,
+            Action::UpdateEqualizer,
+            Action::UpdateMicrophoneVolume,
+            Action::UpdateVolumeLimit
+        ];
+        self.submit_all(actions);
+        self.force_all(actions);
+    }
+
+    #[instrument(skip_all)]
+    fn submit_full_change(&mut self) {
+        self.submit_profile_change();
+        let actions = [
+            Action::UpdateMicrophoneLight,
+            Action::UpdateInactiveTime,
+            Action::UpdateBluetoothCall,
+            Action::UpdateAutoBluetooth,
+            Action::UpdateSystemAudio
+        ];
+        self.submit_all(actions);
+        self.force_all(actions);
+    }
+}
+
 #[derive(Debug, Clone)]
-pub struct ActionSender {
+pub struct ActionProxy {
     sender: Sender<ActionOp>
 }
 
-impl ActionSender {
+impl ActionSender for ActionProxy {
 
     #[instrument(skip(self))]
-    pub fn submit(&self, action: Action) {
+    fn submit(&mut self, action: Action) {
         self
             .sender
             .try_send(ActionOp::Submit(action, Instant::now()))
@@ -65,25 +108,13 @@ impl ActionSender {
         tracing::trace!("Submitted new action");
     }
 
-    pub fn submit_all(&self, actions: impl IntoIterator<Item = Action>) {
-        for action in actions {
-            self.submit(action);
-        }
-    }
-
     #[instrument(skip(self))]
-    pub fn force(&self, action: Action) {
+    fn force(&mut self, action: Action) {
         self
             .sender
             .try_send(ActionOp::Force(action))
             .unwrap_or_else(|_| tracing::warn!("Failed to send"));
         tracing::trace!("Skipped timeout");
-    }
-
-    pub fn force_all(&self, actions: impl IntoIterator<Item = Action>) {
-        for action in actions {
-            self.force(action);
-        }
     }
 }
 
@@ -94,35 +125,23 @@ pub struct ActionReceiver {
     timer: Pin<Box<Option<Sleep>>>
 }
 
-impl ActionReceiver {
+impl ActionSender for ActionReceiver {
 
     #[instrument(skip(self))]
-    pub fn submit(&mut self, action: Action) {
+    fn submit(&mut self, action: Action) {
         let now = Instant::now();
         let old = self.actions.insert(action, now);
         debug_assert!(old.map_or(true, |old| old <= now));
         tracing::trace!("Submitted new action");
     }
 
-    pub fn submit_all(&mut self, actions: impl IntoIterator<Item = Action>) {
-        for action in actions {
-            self.submit(action);
-        }
-    }
-
     #[instrument(skip(self))]
-    pub fn force(&mut self, action: Action) {
+    fn force(&mut self, action: Action) {
         if let Some(time) = self.actions.get_mut(action) {
             *time -= action.timeout();
         }
         tracing::trace!("Skipped timeout");
     }
-
-    //pub fn force_all(&mut self, actions: impl IntoIterator<Item = Action>) {
-    //    for action in actions {
-    //        self.force(action);
-    //    }
-    //}
 }
 
 impl Stream for ActionReceiver {
@@ -176,9 +195,9 @@ impl Stream for ActionReceiver {
     }
 }
 
-pub fn debouncer() -> (ActionSender, ActionReceiver) {
+pub fn debouncer() -> (ActionProxy, ActionReceiver) {
     let (sender, receiver) = tokio::sync::mpsc::channel(512);
-    let sender = ActionSender {
+    let sender = ActionProxy {
         sender,
     };
     let receiver = ActionReceiver {

@@ -10,7 +10,7 @@ use tracing::instrument;
 
 use crate::audio::AudioSystem;
 use crate::config::Config;
-use crate::debouncer::{Action, ActionSender};
+use crate::debouncer::{Action, ActionProxy, ActionSender};
 use crate::devices::{Device, DeviceList};
 use crate::ui::central_panel::central_panel;
 use crate::ui::side_panel::side_panel;
@@ -33,7 +33,7 @@ pub static WINDOW_ICON: Lazy<Icon> = Lazy::new(|| {
 
 #[instrument(skip_all)]
 pub fn config_ui(
-    ctx: &Context, sender: &ActionSender, config: &mut Config, device: &dyn Device, device_list: &Mutex<DeviceList>,
+    ctx: &Context, sender: &mut ActionProxy, config: &mut Config, device: &dyn Device, device_list: &Mutex<DeviceList>,
     audio_system: &mut AudioSystem
 ) {
     SidePanel::new(Side::Left, "Profiles")
@@ -44,7 +44,7 @@ pub fn config_ui(
 }
 
 #[instrument(skip_all)]
-pub fn no_device_ui(ctx: &Context, sender: &ActionSender) {
+pub fn no_device_ui(ctx: &Context, sender: &mut ActionProxy) {
     CentralPanel::default().show(ctx, |ctx| {
         ctx.vertical_centered(|ctx| {
             ctx.add_space(ctx.available_height() / 3.0);
@@ -58,12 +58,12 @@ pub fn no_device_ui(ctx: &Context, sender: &ActionSender) {
 }
 
 trait ResponseExt {
-    fn submit(self, sender: &ActionSender, auto_update: bool, action: Action) -> Self;
+    fn submit(self, sender: &mut ActionProxy, auto_update: bool, action: Action) -> Self;
 }
 
 impl ResponseExt for Response {
     #[instrument(skip(self, sender, action), name = "submit_response")]
-    fn submit(self, sender: &ActionSender, auto_update: bool, action: Action) -> Self {
+    fn submit(self, sender: &mut ActionProxy, auto_update: bool, action: Action) -> Self {
         if self.changed() {
             sender.submit(Action::SaveConfig);
             if auto_update {

@@ -6,14 +6,13 @@ use tracing::instrument;
 
 use crate::audio::AudioSystem;
 use crate::config::Config;
-use crate::debouncer::{Action, ActionSender};
+use crate::debouncer::{Action, ActionProxy, ActionSender};
 use crate::devices::Device;
-use crate::submit_full_change;
 use crate::ui::central_panel::headset::headset_section;
 use crate::ui::central_panel::profile::profile_section;
 
 #[instrument(skip_all)]
-pub fn central_panel(ui: &mut Ui, sender: &ActionSender, config: &mut Config, device: &dyn Device, audio_system: &mut AudioSystem) {
+pub fn central_panel(ui: &mut Ui, sender: &mut ActionProxy, config: &mut Config, device: &dyn Device, audio_system: &mut AudioSystem) {
     ui.style_mut()
         .text_styles
         .get_mut(&TextStyle::Heading)
@@ -57,7 +56,7 @@ pub fn central_panel(ui: &mut Ui, sender: &ActionSender, config: &mut Config, de
                 .add_sized([200.0, 20.0], Button::new("Apply Now"))
                 .clicked()
             {
-                submit_full_change(sender);
+                sender.submit_full_change();
             }
         });
         ui.add_space(10.0);
