@@ -13,7 +13,7 @@ use crate::ui::central_panel::headset::headset_section;
 use crate::ui::central_panel::profile::profile_section;
 
 #[instrument(skip_all)]
-pub fn central_panel(ui: &mut Ui, debouncer: &ActionSender, config: &mut Config, device: &dyn Device, audio_system: &mut AudioSystem) {
+pub fn central_panel(ui: &mut Ui, sender: &ActionSender, config: &mut Config, device: &dyn Device, audio_system: &mut AudioSystem) {
     ui.style_mut()
         .text_styles
         .get_mut(&TextStyle::Heading)
@@ -34,13 +34,13 @@ pub fn central_panel(ui: &mut Ui, debouncer: &ActionSender, config: &mut Config,
         let headset = config.get_headset(device.name());
         ui.heading("Profile");
         ui.add_space(7.0);
-        profile_section(ui, debouncer, auto_update, headset.selected_profile(), device);
+        profile_section(ui, sender, auto_update, headset.selected_profile(), device);
         ui.add_space(10.0);
         ui.separator();
         ui.add_space(10.0);
         ui.heading("Headset");
         ui.add_space(7.0);
-        headset_section(ui, debouncer, auto_update, headset, device, audio_system);
+        headset_section(ui, sender, auto_update, headset, device, audio_system);
         ui.add_space(10.0);
         ui.separator();
         ui.add_space(10.0);
@@ -50,14 +50,14 @@ pub fn central_panel(ui: &mut Ui, debouncer: &ActionSender, config: &mut Config,
             .checkbox(&mut config.auto_apply_changes, "Auto Apply Changes")
             .changed()
         {
-            debouncer.submit(Action::SaveConfig);
+            sender.submit(Action::SaveConfig);
         }
         ui.with_layout(Layout::default().with_main_align(Align::Center), |ui| {
             if ui
                 .add_sized([200.0, 20.0], Button::new("Apply Now"))
                 .clicked()
             {
-                submit_full_change(debouncer);
+                submit_full_change(sender);
             }
         });
         ui.add_space(10.0);

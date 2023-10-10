@@ -9,14 +9,14 @@ use crate::ui::ResponseExt;
 
 #[instrument(skip_all)]
 pub fn headset_section(
-    ui: &mut Ui, debouncer: &ActionSender, auto_update: bool, headset: &mut HeadsetConfig, device: &dyn Device, audio_system: &mut AudioSystem
+    ui: &mut Ui, sender: &ActionSender, auto_update: bool, headset: &mut HeadsetConfig, device: &dyn Device, audio_system: &mut AudioSystem
 ) {
     if device.get_inactive_time().is_some() {
         ui.horizontal(|ui| {
             DragValue::new(&mut headset.inactive_time)
                 .clamp_range(5..=120)
                 .ui(ui)
-                .submit(debouncer, auto_update, Action::UpdateInactiveTime);
+                .submit(sender, auto_update, Action::UpdateInactiveTime);
             ui.label("Inactive Time");
         });
         ui.add_space(10.0);
@@ -26,14 +26,14 @@ pub fn headset_section(
         Slider::new(&mut headset.mic_light, 0..=(mic_light.levels() - 1))
             .text("Microphone Light")
             .ui(ui)
-            .submit(debouncer, auto_update, Action::UpdateMicrophoneLight);
+            .submit(sender, auto_update, Action::UpdateMicrophoneLight);
         ui.add_space(10.0);
     }
 
     if device.get_bluetooth_config().is_some() {
         Checkbox::new(&mut headset.auto_enable_bluetooth, "Auto Enable Bluetooth")
             .ui(ui)
-            .submit(debouncer, auto_update, Action::UpdateAutoBluetooth);
+            .submit(sender, auto_update, Action::UpdateAutoBluetooth);
         ui.add_space(10.0);
         let actions = [
             (CallAction::Nothing, "Nothing"),
@@ -47,7 +47,7 @@ pub fn headset_section(
         ComboBox::from_label("Bluetooth Call Action")
             .width(120.0)
             .show_index(ui, &mut current_index, actions.len(), |i| actions[i].1.to_string())
-            .submit(debouncer, auto_update, Action::UpdateBluetoothCall);
+            .submit(sender, auto_update, Action::UpdateBluetoothCall);
         headset.bluetooth_call = actions[current_index].0;
         ui.add_space(10.0);
     }
@@ -55,10 +55,10 @@ pub fn headset_section(
     if audio_system.is_running() {
         let switch = &mut headset.os_audio;
         if audio_output_switch_selector(ui, switch, audio_system) {
-            debouncer.submit(Action::SaveConfig);
+            sender.submit(Action::SaveConfig);
             if auto_update {
-                debouncer.submit(Action::UpdateSystemAudio);
-                debouncer.force(Action::UpdateSystemAudio);
+                sender.submit(Action::UpdateSystemAudio);
+                sender.force(Action::UpdateSystemAudio);
             }
         }
         ui.add_space(10.0);

@@ -1,13 +1,14 @@
 use egui::*;
+use parking_lot::Mutex;
 use tracing::instrument;
 
 use crate::config::{Config, Profile};
 use crate::debouncer::{Action, ActionSender};
-use crate::devices::{Device, SupportedDevice};
+use crate::devices::{Device, DeviceList};
 use crate::submit_profile_change;
 
 #[instrument(skip_all)]
-pub fn side_panel(ui: &mut Ui, debouncer: &ActionSender, config: &mut Config, device: &dyn Device, device_list: &[SupportedDevice]) {
+pub fn side_panel(ui: &mut Ui, sender: &ActionSender, config: &mut Config, device: &dyn Device, device_list: &Mutex<DeviceList>) {
     ui.style_mut()
         .text_styles
         .get_mut(&TextStyle::Body)
@@ -26,7 +27,7 @@ pub fn side_panel(ui: &mut Ui, debouncer: &ActionSender, config: &mut Config, de
         )
     )
     .context_menu(|ui| {
-        for device in device_list.iter() {
+        for device in device_list.lock().supported_devices() {
             let resp = ui
                 .with_layout(Layout::default().with_cross_justify(true), |ui| {
                     let active = config
@@ -39,12 +40,12 @@ pub fn side_panel(ui: &mut Ui, debouncer: &ActionSender, config: &mut Config, de
             if resp.clicked() {
                 ui.close_menu();
                 config.preferred_device = Some(device.name().to_string());
-                debouncer.submit_all([Action::SaveConfig, Action::SwitchDevice]);
+                sender.submit_all([Action::SaveConfig, Action::SwitchDevice]);
             }
         }
         ui.separator();
         if ui.button(" Refresh ").clicked() {
-            debouncer.submit_all([Action::RefreshDeviceList, Action::SwitchDevice]);
+            sender.submit_all([Action::RefreshDeviceList, Action::SwitchDevice]);
         }
     });
     ui.separator();
@@ -80,7 +81,7 @@ pub fn side_panel(ui: &mut Ui, debouncer: &ActionSender, config: &mut Config, de
             headset
                 .profiles
                 .push(Profile::new(String::from("New Profile")));
-            debouncer.submit_all([Action::SaveConfig, Action::UpdateTray]);
+            sender.submit_all([Action::SaveConfig, Action::UpdateTray]);
         }
     });
     ScrollArea::vertical()
@@ -97,7 +98,7 @@ pub fn side_panel(ui: &mut Ui, debouncer: &ActionSender, config: &mut Config, de
                     .inner;
                 let resp = resp.context_menu(|ui| {
                     if ui.text_edit_singleline(&mut profile.name).changed() {
-                        debouncer.submit_all([Action::SaveConfig, Action::UpdateTray]);
+                        sender.submit_all([Action::SaveConfig, Action::UpdateTray]);
                     }
                     ui.add_space(4.0);
                     if ui
@@ -114,14 +115,14 @@ pub fn side_panel(ui: &mut Ui, debouncer: &ActionSender, config: &mut Config, de
             }
             if let Some(i) = deleted {
                 headset.profiles.remove(i);
-                debouncer.submit_all([Action::SaveConfig, Action::UpdateTray]);
+                sender.submit_all([Action::SaveConfig, Action::UpdateTray]);
                 if i as u32 <= headset.selected_profile_index && headset.selected_profile_index > 0 {
                     headset.selected_profile_index -= 1;
                 }
             }
             if headset.selected_profile_index != old_profile_index {
-                submit_profile_change(debouncer);
-                debouncer.submit_all([Action::SaveConfig, Action::UpdateTray]);
+                submit_profile_change(sender);
+                sender.submit_all([Action::SaveConfig, Action::UpdateTray]);
             }
         });
 }

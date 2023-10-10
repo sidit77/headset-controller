@@ -94,6 +94,37 @@ pub struct ActionReceiver {
     timer: Pin<Box<Option<Sleep>>>
 }
 
+impl ActionReceiver {
+
+    #[instrument(skip(self))]
+    pub fn submit(&mut self, action: Action) {
+        let now = Instant::now();
+        let old = self.actions.insert(action, now);
+        debug_assert!(old.map_or(true, |old| old <= now));
+        tracing::trace!("Submitted new action");
+    }
+
+    pub fn submit_all(&mut self, actions: impl IntoIterator<Item = Action>) {
+        for action in actions {
+            self.submit(action);
+        }
+    }
+
+    #[instrument(skip(self))]
+    pub fn force(&mut self, action: Action) {
+        if let Some(time) = self.actions.get_mut(action) {
+            *time -= action.timeout();
+        }
+        tracing::trace!("Skipped timeout");
+    }
+
+    //pub fn force_all(&mut self, actions: impl IntoIterator<Item = Action>) {
+    //    for action in actions {
+    //        self.force(action);
+    //    }
+    //}
+}
+
 impl Stream for ActionReceiver {
     type Item = Action;
 

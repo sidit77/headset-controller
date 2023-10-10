@@ -50,7 +50,7 @@ mod ui;
 mod util;
 
 use std::ops::Not;
-use std::sync::Mutex;
+use std::sync::{Arc};
 use std::time::{Duration, Instant};
 
 use color_eyre::Result;
@@ -65,23 +65,24 @@ use tracing_subscriber::fmt::layer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use futures_lite::StreamExt;
+use parking_lot::Mutex;
 
 use crate::audio::AudioSystem;
-use crate::config::{log_file, Config, EqualizerConfig, HeadsetConfig, CLOSE_IMMEDIATELY, START_QUIET, PRINT_UDEV_RULES};
-use crate::debouncer::{Action, ActionSender, Debouncer, debouncer};
-use crate::devices::{BatteryLevel, BoxedDevice, Device, DeviceManager, DeviceUpdate, generate_udev_rules};
+use crate::config::{Config, EqualizerConfig, HeadsetConfig, CLOSE_IMMEDIATELY, START_QUIET, PRINT_UDEV_RULES};
+use crate::debouncer::{Action, ActionReceiver, ActionSender, Debouncer, debouncer};
+use crate::devices::{BatteryLevel, BoxedDevice, Device, DeviceList, DeviceUpdate, generate_udev_rules};
 use crate::renderer::EguiWindow;
 use crate::tray::{AppTray, TrayEvent};
 
 fn main() -> Result<()> {
     if *PRINT_UDEV_RULES { return Ok(println!("{}", generate_udev_rules()?)); }
     color_eyre::install()?;
-    let logfile = Mutex::new(log_file());
+    //let logfile = Mutex::new(log_file());
     tracing_subscriber::registry()
         .with(ErrorLayer::default())
         .with(Targets::new().with_default(LevelFilter::TRACE))
         .with(layer().without_time())
-        .with(layer().with_ansi(false).with_writer(logfile))
+        //.with(layer().with_ansi(false).with_writer(logfile))
         .init();
     let runtime = Builder::new_multi_thread().enable_all().build()?;
 
@@ -94,45 +95,44 @@ fn main() -> Result<()> {
 
     let mut audio_system = AudioSystem::new();
 
-    let mut device_manager = runtime.block_on(DeviceManager::new())?;
-    let mut device = runtime.block_on(async {
+    let device_manager = Arc::new(Mutex::new(runtime.block_on(DeviceList::new())?));
+    let device = Arc::new(Mutex::new(runtime.block_on(async {
         device_manager
+            .lock()
             .find_preferred_device(&config.preferred_device, event_loop_proxy.clone())
             .await
-    });
+    })));
 
     let mut tray = AppTray::new(&event_loop);
 
     let mut window: Option<EguiWindow> = START_QUIET.not().then(|| EguiWindow::new(&event_loop));
 
-    let (action_sender, mut action_receiver) = debouncer();
+    let (action_sender, action_receiver) = debouncer();
     let mut debouncer = Debouncer::new();
-    let mut last_connected = false;
-    let mut last_battery = Default::default();
+
     action_sender.submit_all([Action::UpdateSystemAudio, Action::UpdateTrayTooltip, Action::UpdateTray]);
 
     span.exit();
 
-    runtime.spawn(async move {
-        while let Some(action) = action_receiver.next().await {
-            println!("{:?}", action);
-        }
-    });
+    runtime.spawn(action_handler(action_receiver, device_manager.clone(), device.clone()));
 
     event_loop.run_return(move |event, event_loop, control_flow| {
         if window
             .as_mut()
             .map(|w| {
-                w.handle_events(&event, |egui_ctx| match &device {
-                    Some(device) => ui::config_ui(
-                        egui_ctx,
-                        &action_sender,
-                        &mut config,
-                        device.as_ref(),
-                        device_manager.supported_devices(),
-                        &mut audio_system
-                    ),
-                    None => ui::no_device_ui(egui_ctx, &action_sender)
+                w.handle_events(&event, |egui_ctx| {
+                    let device = device.lock();
+                    match device.as_ref() {
+                        Some(device) => ui::config_ui(
+                            egui_ctx,
+                            &action_sender,
+                            &mut config,
+                            device.as_ref(),
+                            device_manager.as_ref(),
+                            &mut audio_system
+                        ),
+                        None => ui::no_device_ui(egui_ctx, &action_sender)
+                    }
                 })
             })
             .unwrap_or(false)
@@ -162,7 +162,8 @@ fn main() -> Result<()> {
                     }
                     Some(TrayEvent::Profile(id)) => {
                         let _span = tracing::info_span!("profile_change", id).entered();
-                        if let Some(device) = &device {
+                        let device = device.lock();
+                        if let Some(device) = device.as_ref() {
                             let headset = config.get_headset(device.name());
                             if id as u32 != headset.selected_profile_index {
                                 let len = headset.profiles.len();
@@ -186,35 +187,12 @@ fn main() -> Result<()> {
                     let _span = tracing::info_span!("debouncer_event", ?action).entered();
                     tracing::trace!("Processing event");
                     match action {
-                        Action::UpdateDeviceStatus => {
-                            if let Some(device) = &device {
-                                let current_connection = device.is_connected();
-                                let current_battery = device.get_battery_status();
-                                if current_connection != last_connected {
-                                    let msg = build_notification_text(current_connection, &[current_battery, last_battery]);
-                                    notification::notify(device.name(), &msg, Duration::from_secs(2))
-                                        .unwrap_or_else(|err| tracing::warn!("Can not create notification: {:?}", err));
-                                    action_sender.submit_all([Action::UpdateSystemAudio, Action::UpdateTrayTooltip]);
-                                    action_sender.force(Action::UpdateSystemAudio);
-                                    last_connected = current_connection;
-                                }
-                                if last_battery != current_battery {
-                                    action_sender.submit(Action::UpdateTrayTooltip);
-                                    last_battery = current_battery;
-                                }
-                            }
-                        }
-                        Action::RefreshDeviceList => runtime.block_on(async {
-                            device = None;
-                            device_manager
-                                .refresh()
-                                .await
-                                .unwrap_or_else(|err| tracing::warn!("Failed to refresh devices: {}", err))
-                        }),
                         Action::SwitchDevice => {
+                            let mut device = device.lock();
                             if config.preferred_device != device.as_ref().map(|d| d.name().to_string()) {
-                                device = runtime.block_on(async {
+                                *device = runtime.block_on(async {
                                     device_manager
+                                        .lock()
                                         .find_preferred_device(&config.preferred_device, event_loop_proxy.clone())
                                         .await
                                 });
@@ -225,7 +203,8 @@ fn main() -> Result<()> {
                             }
                         }
                         Action::UpdateSystemAudio => {
-                            if let Some(device) = &device {
+                            let device = device.lock();
+                            if let Some(device) = device.as_ref() {
                                 let headset = config.get_headset(device.name());
                                 audio_system.apply(&headset.os_audio, device.is_connected())
                             }
@@ -235,10 +214,11 @@ fn main() -> Result<()> {
                                 .save()
                                 .unwrap_or_else(|err| tracing::warn!("Could not save config: {:?}", err));
                         }
-                        Action::UpdateTray => update_tray(&mut tray, &mut config, device.as_ref().map(|d| d.name())),
-                        Action::UpdateTrayTooltip => update_tray_tooltip(&mut tray, &device),
+                        Action::UpdateTray => update_tray(&mut tray, &mut config, device.lock().as_ref().map(|d| d.name())),
+                        Action::UpdateTrayTooltip => update_tray_tooltip(&mut tray, &device.lock()),
                         action => {
-                            if let Some(device) = &device {
+                            let device = device.lock();
+                            if let Some(device) = device.as_ref() {
                                 let headset = config.get_headset(device.name());
                                 apply_config_to_device(action, device.as_ref(), headset)
                             }
@@ -269,6 +249,56 @@ fn main() -> Result<()> {
         }
     });
     Ok(())
+}
+
+async fn action_handler(mut action_receiver: ActionReceiver, device_manager: Arc<Mutex<DeviceList>>, device: Arc<Mutex<Option<BoxedDevice>>>) {
+
+    let mut last_connected = false;
+    let mut last_battery = Default::default();
+
+    while let Some(action) = action_receiver.next().await {
+        //let _span = tracing::info_span!("debouncer_event", ?action).entered();
+        //tracing::trace!("Processing event");
+        match action {
+            Action::UpdateDeviceStatus => {
+                let device = device.lock();
+                if let Some(device) = device.as_ref() {
+                    let current_connection = device.is_connected();
+                    let current_battery = device.get_battery_status();
+                    if current_connection != last_connected {
+                        let msg = build_notification_text(current_connection, &[current_battery, last_battery]);
+                        notification::notify(device.name(), &msg, Duration::from_secs(2))
+                            .unwrap_or_else(|err| tracing::warn!("Can not create notification: {:?}", err));
+                        action_receiver.submit_all([Action::UpdateSystemAudio, Action::UpdateTrayTooltip]);
+                        action_receiver.force(Action::UpdateSystemAudio);
+                        last_connected = current_connection;
+                    }
+                    if last_battery != current_battery {
+                        action_receiver.submit(Action::UpdateTrayTooltip);
+                        last_battery = current_battery;
+                    }
+                }
+            }
+            Action::RefreshDeviceList => {
+                *device.lock() = None;
+                let list = DeviceList::new()
+                    .await
+                    .unwrap_or_else(|err| {
+                        tracing::warn!("Failed to refresh devices: {}", err);
+                        DeviceList::empty()
+                    });
+
+                *device_manager.lock() = list;
+                //device_manager
+                //    .refresh()
+                //    .await
+                //    .unwrap_or_else(|err| tracing::warn!("Failed to refresh devices: {}", err))
+            },
+            _ => {
+
+            }
+        }
+    }
 }
 
 #[instrument(skip_all)]

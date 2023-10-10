@@ -116,42 +116,45 @@ pub enum DeviceUpdate {
     DeviceError(HidError)
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct DeviceManager {
+#[derive(Debug, Clone)]
+pub struct DeviceList {
     interfaces: InterfaceMap,
     devices: Vec<SupportedDevice>
 }
 
-impl DeviceManager {
-    pub async fn new() -> DeviceResult<Self> {
-        let mut result = Self::default();
-        result.refresh().await?;
-        Ok(result)
+impl DeviceList {
+
+    pub fn empty() -> Self {
+        Self {
+            interfaces: HashMap::new(),
+            devices: Vec::new(),
+        }
     }
 
-    #[instrument(skip_all)]
-    pub async fn refresh(&mut self) -> DeviceResult<()> {
-        self.interfaces.clear();
-        DeviceInfo::enumerate()
+    #[instrument]
+    pub async fn new() -> DeviceResult<Self> {
+        let interfaces: InterfaceMap = DeviceInfo::enumerate()
             .await?
             .map(|dev| (Interface::from(&dev), dev))
-            .for_each(|(info, dev)| _ = self.interfaces.insert(info, dev))
+            .collect()
             .await;
 
-        self.devices.clear();
-        self.devices.extend(
-            SUPPORTED_DEVICES
-                .iter()
-                .chain(DUMMY_DEVICE_ENABLED.then_some(&DUMMY_DEVICE))
-                .filter(|dev| {
-                    dev.required_interfaces
-                        .iter()
-                        .all(|i| self.interfaces.contains_key(i))
-                })
-                .inspect(|dev| tracing::trace!("Found {}", dev.strings.name))
-        );
+        let devices: Vec<SupportedDevice> = SUPPORTED_DEVICES
+            .iter()
+            .chain(DUMMY_DEVICE_ENABLED.then_some(&DUMMY_DEVICE))
+            .filter(|dev| {
+                dev.required_interfaces
+                    .iter()
+                    .all(|i| interfaces.contains_key(i))
+            })
+            .inspect(|dev| tracing::trace!("Found {}", dev.strings.name))
+            .copied()
+            .collect();
 
-        Ok(())
+        Ok(Self {
+            interfaces,
+            devices,
+        })
     }
 
     pub fn supported_devices(&self) -> &Vec<SupportedDevice> {
@@ -222,7 +225,7 @@ enum ConfigAction {
 }
 
 pub type DeviceResult<T> = Result<T, EyreError>;
-pub type BoxedDevice = Box<dyn Device>;
+pub type BoxedDevice = Box<dyn Device + Send>;
 pub type BoxedDeviceFuture<'a> = Pin<Box<dyn Future<Output = DeviceResult<BoxedDevice>> + 'a>>;
 
 pub trait Device {

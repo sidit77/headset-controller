@@ -7,9 +7,9 @@ use crate::devices::{Device, Equalizer};
 use crate::ui::ResponseExt;
 
 #[instrument(skip_all)]
-pub fn profile_section(ui: &mut Ui, debouncer: &ActionSender, auto_update: bool, profile: &mut Profile, device: &dyn Device) {
+pub fn profile_section(ui: &mut Ui, sender: &ActionSender, auto_update: bool, profile: &mut Profile, device: &dyn Device) {
     if let Some(equalizer) = device.get_equalizer() {
-        equalizer_ui(ui, debouncer, auto_update, &mut profile.equalizer, equalizer);
+        equalizer_ui(ui, sender, auto_update, &mut profile.equalizer, equalizer);
         ui.add_space(10.0);
     }
     if let Some(side_tone) = device.get_side_tone() {
@@ -17,25 +17,25 @@ pub fn profile_section(ui: &mut Ui, debouncer: &ActionSender, auto_update: bool,
             .text("Side Tone Level")
             .ui(ui)
             .on_hover_text("This setting controls how much of your voice is played back over the headset when you speak.\nSet to 0 to turn off.")
-            .submit(debouncer, auto_update, Action::UpdateSideTone);
+            .submit(sender, auto_update, Action::UpdateSideTone);
         ui.add_space(10.0);
     }
     if let Some(mic_volume) = device.get_mic_volume() {
         Slider::new(&mut profile.microphone_volume, 0..=(mic_volume.levels() - 1))
             .text("Microphone Level")
             .ui(ui)
-            .submit(debouncer, auto_update, Action::UpdateMicrophoneVolume);
+            .submit(sender, auto_update, Action::UpdateMicrophoneVolume);
         ui.add_space(10.0);
     }
     if device.get_volume_limiter().is_some() {
         Checkbox::new(&mut profile.volume_limiter, "Limit Volume")
             .ui(ui)
-            .submit(debouncer, auto_update, Action::UpdateVolumeLimit);
+            .submit(sender, auto_update, Action::UpdateVolumeLimit);
         ui.add_space(10.0);
     }
 }
 
-fn equalizer_ui(ui: &mut Ui, debouncer: &ActionSender, auto_update: bool, conf: &mut EqualizerConfig, equalizer: &dyn Equalizer) {
+fn equalizer_ui(ui: &mut Ui, sender: &ActionSender, auto_update: bool, conf: &mut EqualizerConfig, equalizer: &dyn Equalizer) {
     let range = (equalizer.base_level() - equalizer.variance())..=(equalizer.base_level() + equalizer.variance());
     let mut presets = equalizer
         .presets()
@@ -64,7 +64,7 @@ fn equalizer_ui(ui: &mut Ui, debouncer: &ActionSender, auto_update: bool, conf: 
                 current_index = custom_index;
             }
             if resp.drag_released() {
-                debouncer.force(Action::UpdateEqualizer);
+                sender.force(Action::UpdateEqualizer);
             }
         }
     });
@@ -74,12 +74,12 @@ fn equalizer_ui(ui: &mut Ui, debouncer: &ActionSender, auto_update: bool, conf: 
         } else {
             EqualizerConfig::Preset(current_index as u32)
         };
-        debouncer.submit(Action::SaveConfig);
+        sender.submit(Action::SaveConfig);
         if auto_update {
-            debouncer.submit(Action::UpdateEqualizer);
+            sender.submit(Action::UpdateEqualizer);
         }
     }
     if preset.changed() {
-        debouncer.force(Action::UpdateEqualizer);
+        sender.force(Action::UpdateEqualizer);
     }
 }

@@ -1,5 +1,3 @@
-use std::io::{Error, ErrorKind, Write};
-
 use crossbeam_utils::atomic::AtomicCell;
 use tao::event_loop::EventLoopProxy;
 
@@ -26,6 +24,7 @@ impl<T, R> PeekExt<T, R> for Option<T> {
     }
 }
 
+/*
 pub struct EscapeStripper<T> {
     inner: T,
     escape_sequence: bool,
@@ -62,6 +61,8 @@ impl<T: Write> Write for EscapeStripper<T> {
         self.inner.flush()
     }
 }
+
+ */
 
 pub trait AtomicCellExt<T> {
     fn update<F: Fn(&mut T)>(&self, func: F);

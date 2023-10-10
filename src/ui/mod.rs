@@ -4,13 +4,14 @@ mod side_panel;
 use egui::panel::Side;
 use egui::{CentralPanel, Context, Response, RichText, SidePanel};
 use once_cell::sync::Lazy;
+use parking_lot::Mutex;
 use tao::window::Icon;
 use tracing::instrument;
 
 use crate::audio::AudioSystem;
 use crate::config::Config;
 use crate::debouncer::{Action, ActionSender};
-use crate::devices::{Device, SupportedDevice};
+use crate::devices::{Device, DeviceList};
 use crate::ui::central_panel::central_panel;
 use crate::ui::side_panel::side_panel;
 
@@ -32,45 +33,45 @@ pub static WINDOW_ICON: Lazy<Icon> = Lazy::new(|| {
 
 #[instrument(skip_all)]
 pub fn config_ui(
-    ctx: &Context, debouncer: &ActionSender, config: &mut Config, device: &dyn Device, device_list: &[SupportedDevice],
+    ctx: &Context, sender: &ActionSender, config: &mut Config, device: &dyn Device, device_list: &Mutex<DeviceList>,
     audio_system: &mut AudioSystem
 ) {
     SidePanel::new(Side::Left, "Profiles")
         .resizable(true)
         .width_range(175.0..=400.0)
-        .show(ctx, |ui| side_panel(ui, debouncer, config, device, device_list));
-    CentralPanel::default().show(ctx, |ui| central_panel(ui, debouncer, config, device, audio_system));
+        .show(ctx, |ui| side_panel(ui, sender, config, device, device_list));
+    CentralPanel::default().show(ctx, |ui| central_panel(ui, sender, config, device, audio_system));
 }
 
 #[instrument(skip_all)]
-pub fn no_device_ui(ctx: &Context, debouncer: &ActionSender) {
+pub fn no_device_ui(ctx: &Context, sender: &ActionSender) {
     CentralPanel::default().show(ctx, |ctx| {
         ctx.vertical_centered(|ctx| {
             ctx.add_space(ctx.available_height() / 3.0);
             ctx.label(RichText::new("No supported device detected!").size(20.0));
             ctx.add_space(10.0);
             if ctx.button(RichText::new("Refresh").size(15.0)).clicked() {
-                debouncer.submit_all([Action::RefreshDeviceList, Action::SwitchDevice]);
+                sender.submit_all([Action::RefreshDeviceList, Action::SwitchDevice]);
             }
         });
     });
 }
 
 trait ResponseExt {
-    fn submit(self, debouncer: &ActionSender, auto_update: bool, action: Action) -> Self;
+    fn submit(self, sender: &ActionSender, auto_update: bool, action: Action) -> Self;
 }
 
 impl ResponseExt for Response {
-    #[instrument(skip(self, debouncer, action), name = "submit_response")]
-    fn submit(self, debouncer: &ActionSender, auto_update: bool, action: Action) -> Self {
+    #[instrument(skip(self, sender, action), name = "submit_response")]
+    fn submit(self, sender: &ActionSender, auto_update: bool, action: Action) -> Self {
         if self.changed() {
-            debouncer.submit(Action::SaveConfig);
+            sender.submit(Action::SaveConfig);
             if auto_update {
-                debouncer.submit(action);
+                sender.submit(action);
             }
         }
         if self.drag_released() {
-            debouncer.force(action);
+            sender.force(action);
         }
         self
     }
