@@ -30,6 +30,7 @@ crossbeam-utils = "0.8"
 static_assertions = "1"
 fixed-map = "0.9"
 parking_lot = "0.12"
+flume = "0.11"
 
 async-hid = { git = "https://github.com/sidit77/async-hid.git"}
 #async-hid = {path = "../async-hid"}

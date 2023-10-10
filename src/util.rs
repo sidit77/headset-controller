@@ -1,4 +1,5 @@
 use crossbeam_utils::atomic::AtomicCell;
+use flume::Sender;
 use tao::event_loop::EventLoopProxy;
 
 pub trait CopySlice<T> {
@@ -88,6 +89,13 @@ impl<T: Copy + Eq> AtomicCellExt<T> for AtomicCell<T> {
 
 pub trait SenderExt<T> {
     fn send_log(&self, update: T);
+}
+
+impl<T> SenderExt<T> for Sender<T> {
+    fn send_log(&self, update: T) {
+        self.try_send(update)
+            .unwrap_or_else(|_| tracing::warn!("Could not send message because the receiver is closed"))
+    }
 }
 
 impl<T> SenderExt<T> for EventLoopProxy<T> {

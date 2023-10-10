@@ -66,6 +66,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use futures_lite::StreamExt;
 use parking_lot::Mutex;
+use tokio::spawn;
 
 use crate::audio::AudioSystem;
 use crate::config::{Config, EqualizerConfig, HeadsetConfig, CLOSE_IMMEDIATELY, START_QUIET, PRINT_UDEV_RULES};
@@ -84,24 +85,18 @@ fn main() -> Result<()> {
         .with(layer().without_time())
         //.with(layer().with_ansi(false).with_writer(logfile))
         .init();
-    let runtime = Builder::new_multi_thread().enable_all().build()?;
+
 
     let span = tracing::info_span!("init").entered();
 
     let mut config = Config::load()?;
 
     let mut event_loop = EventLoop::with_user_event();
-    let event_loop_proxy = event_loop.create_proxy();
 
     let mut audio_system = AudioSystem::new();
 
-    let device_manager = Arc::new(Mutex::new(runtime.block_on(DeviceList::new())?));
-    let device = Arc::new(Mutex::new(runtime.block_on(async {
-        device_manager
-            .lock()
-            .find_preferred_device(&config.preferred_device, event_loop_proxy.clone())
-            .await
-    })));
+    let device_manager = Arc::new(Mutex::new(DeviceList::empty()));
+    let device: Arc<Mutex<Option<BoxedDevice>>> = Arc::new(Mutex::new(None));
 
     let mut tray = AppTray::new(&event_loop);
 
@@ -114,7 +109,17 @@ fn main() -> Result<()> {
 
     span.exit();
 
-    runtime.spawn(action_handler(action_receiver, device_manager.clone(), device.clone()));
+    let runtime = {
+        let device_manager = device_manager.clone();
+        let device = device.clone();
+        std::thread::spawn(move || {
+            Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to start runtime")
+                .block_on(action_handler(action_receiver, device_manager, device))
+        })
+    };
 
     event_loop.run_return(move |event, event_loop, control_flow| {
         if window
@@ -190,12 +195,12 @@ fn main() -> Result<()> {
                         Action::SwitchDevice => {
                             let mut device = device.lock();
                             if config.preferred_device != device.as_ref().map(|d| d.name().to_string()) {
-                                *device = runtime.block_on(async {
-                                    device_manager
-                                        .lock()
-                                        .find_preferred_device(&config.preferred_device, event_loop_proxy.clone())
-                                        .await
-                                });
+                                //*device = runtime.block_on(async {
+                                //    device_manager
+                                //        .lock()
+                                //        .find_preferred_device(&config.preferred_device, event_loop_proxy.clone())
+                                //        .await
+                                //});
                                 submit_full_change(&action_sender);
                                 action_sender.submit_all([Action::UpdateTray, Action::UpdateTrayTooltip]);
                             } else {
@@ -248,17 +253,37 @@ fn main() -> Result<()> {
             };
         }
     });
+
+    runtime.join().unwrap();
     Ok(())
 }
 
 async fn action_handler(mut action_receiver: ActionReceiver, device_manager: Arc<Mutex<DeviceList>>, device: Arc<Mutex<Option<BoxedDevice>>>) {
+    let (device_update_sender, device_update_receiver) = flume::unbounded();
+
+    spawn(async move {
+        while let Ok(update) = device_update_receiver.recv_async().await {
+            println!("DeviceUpdate: {:?}", update);
+        }
+    });
+
+    *device_manager.lock() = DeviceList::new()
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!("Failed to enumerate devices: {:?}", err);
+            DeviceList::empty()
+        });
+    *device.lock() = device_manager
+        .lock()
+        .find_preferred_device(&None, device_update_sender.clone())
+        .await;
 
     let mut last_connected = false;
     let mut last_battery = Default::default();
 
     while let Some(action) = action_receiver.next().await {
-        //let _span = tracing::info_span!("debouncer_event", ?action).entered();
-        //tracing::trace!("Processing event");
+        let _span = tracing::info_span!("debouncer_event", ?action).entered();
+        tracing::trace!("Processing event");
         match action {
             Action::UpdateDeviceStatus => {
                 let device = device.lock();

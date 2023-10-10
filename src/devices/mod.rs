@@ -8,8 +8,8 @@ use std::pin::Pin;
 
 use async_hid::{DeviceInfo, HidError};
 use color_eyre::eyre::Error as EyreError;
+use flume::Sender;
 use futures_lite::stream::StreamExt;
-use tao::event_loop::EventLoopProxy;
 use tracing::instrument;
 
 use crate::config::{CallAction, DUMMY_DEVICE as DUMMY_DEVICE_ENABLED};
@@ -88,7 +88,7 @@ impl DeviceStrings {
 }
 
 pub type InterfaceMap = HashMap<Interface, DeviceInfo>;
-pub type UpdateChannel = EventLoopProxy<DeviceUpdate>;
+pub type UpdateChannel = Sender<DeviceUpdate>;
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct SupportedDevice {
     pub strings: DeviceStrings,

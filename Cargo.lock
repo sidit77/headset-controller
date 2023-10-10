@@ -1441,6 +1441,7 @@ dependencies = [
  "egui-tao",
  "egui_glow",
  "fixed-map",
+ "flume",
  "futures-lite",
  "glow",
  "glutin",
