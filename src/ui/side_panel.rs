@@ -2,12 +2,12 @@ use egui::*;
 use tracing::instrument;
 
 use crate::config::{Config, Profile};
-use crate::debouncer::{Action, Debouncer};
+use crate::debouncer::{Action, ActionSender};
 use crate::devices::{Device, SupportedDevice};
 use crate::submit_profile_change;
 
 #[instrument(skip_all)]
-pub fn side_panel(ui: &mut Ui, debouncer: &mut Debouncer, config: &mut Config, device: &dyn Device, device_list: &[SupportedDevice]) {
+pub fn side_panel(ui: &mut Ui, debouncer: &ActionSender, config: &mut Config, device: &dyn Device, device_list: &[SupportedDevice]) {
     ui.style_mut()
         .text_styles
         .get_mut(&TextStyle::Body)

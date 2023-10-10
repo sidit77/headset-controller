@@ -64,10 +64,11 @@ use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::fmt::layer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use futures_lite::StreamExt;
 
 use crate::audio::AudioSystem;
 use crate::config::{log_file, Config, EqualizerConfig, HeadsetConfig, CLOSE_IMMEDIATELY, START_QUIET, PRINT_UDEV_RULES};
-use crate::debouncer::{Action, Debouncer};
+use crate::debouncer::{Action, ActionSender, Debouncer, debouncer};
 use crate::devices::{BatteryLevel, BoxedDevice, Device, DeviceManager, DeviceUpdate, generate_udev_rules};
 use crate::renderer::EguiWindow;
 use crate::tray::{AppTray, TrayEvent};
@@ -104,12 +105,20 @@ fn main() -> Result<()> {
 
     let mut window: Option<EguiWindow> = START_QUIET.not().then(|| EguiWindow::new(&event_loop));
 
+    let (action_sender, mut action_receiver) = debouncer();
     let mut debouncer = Debouncer::new();
     let mut last_connected = false;
     let mut last_battery = Default::default();
-    debouncer.submit_all([Action::UpdateSystemAudio, Action::UpdateTrayTooltip, Action::UpdateTray]);
+    action_sender.submit_all([Action::UpdateSystemAudio, Action::UpdateTrayTooltip, Action::UpdateTray]);
 
     span.exit();
+
+    runtime.spawn(async move {
+        while let Some(action) = action_receiver.next().await {
+            println!("{:?}", action);
+        }
+    });
+
     event_loop.run_return(move |event, event_loop, control_flow| {
         if window
             .as_mut()
@@ -117,18 +126,18 @@ fn main() -> Result<()> {
                 w.handle_events(&event, |egui_ctx| match &device {
                     Some(device) => ui::config_ui(
                         egui_ctx,
-                        &mut debouncer,
+                        &action_sender,
                         &mut config,
                         device.as_ref(),
                         device_manager.supported_devices(),
                         &mut audio_system
                     ),
-                    None => ui::no_device_ui(egui_ctx, &mut debouncer)
+                    None => ui::no_device_ui(egui_ctx, &action_sender)
                 })
             })
             .unwrap_or(false)
         {
-            debouncer.force(Action::SaveConfig);
+            action_sender.force(Action::SaveConfig);
             window.take();
             if *CLOSE_IMMEDIATELY {
                 *control_flow = ControlFlow::Exit;
@@ -159,8 +168,8 @@ fn main() -> Result<()> {
                                 let len = headset.profiles.len();
                                 if id < len {
                                     headset.selected_profile_index = id as u32;
-                                    submit_profile_change(&mut debouncer);
-                                    debouncer.submit_all([Action::SaveConfig, Action::UpdateTray]);
+                                    submit_profile_change(&action_sender);
+                                    action_sender.submit_all([Action::SaveConfig, Action::UpdateTray]);
                                 } else {
                                     tracing::warn!(len, "Profile id out of range")
                                 }
@@ -185,12 +194,12 @@ fn main() -> Result<()> {
                                     let msg = build_notification_text(current_connection, &[current_battery, last_battery]);
                                     notification::notify(device.name(), &msg, Duration::from_secs(2))
                                         .unwrap_or_else(|err| tracing::warn!("Can not create notification: {:?}", err));
-                                    debouncer.submit_all([Action::UpdateSystemAudio, Action::UpdateTrayTooltip]);
-                                    debouncer.force(Action::UpdateSystemAudio);
+                                    action_sender.submit_all([Action::UpdateSystemAudio, Action::UpdateTrayTooltip]);
+                                    action_sender.force(Action::UpdateSystemAudio);
                                     last_connected = current_connection;
                                 }
                                 if last_battery != current_battery {
-                                    debouncer.submit(Action::UpdateTrayTooltip);
+                                    action_sender.submit(Action::UpdateTrayTooltip);
                                     last_battery = current_battery;
                                 }
                             }
@@ -209,8 +218,8 @@ fn main() -> Result<()> {
                                         .find_preferred_device(&config.preferred_device, event_loop_proxy.clone())
                                         .await
                                 });
-                                submit_full_change(&mut debouncer);
-                                debouncer.submit_all([Action::UpdateTray, Action::UpdateTrayTooltip]);
+                                submit_full_change(&action_sender);
+                                action_sender.submit_all([Action::UpdateTray, Action::UpdateTrayTooltip]);
                             } else {
                                 tracing::debug!("Preferred device is already active")
                             }
@@ -238,7 +247,7 @@ fn main() -> Result<()> {
                 }
             }
             Event::UserEvent(event) => match event {
-                DeviceUpdate::ConnectionChanged | DeviceUpdate::BatteryLevel => debouncer.submit(Action::UpdateDeviceStatus),
+                DeviceUpdate::ConnectionChanged | DeviceUpdate::BatteryLevel => action_sender.submit(Action::UpdateDeviceStatus),
                 DeviceUpdate::DeviceError(err) => tracing::error!("The device return an error: {}", err),
                 DeviceUpdate::ChatMixChanged => {}
             },
@@ -263,7 +272,7 @@ fn main() -> Result<()> {
 }
 
 #[instrument(skip_all)]
-fn submit_profile_change(debouncer: &mut Debouncer) {
+fn submit_profile_change(debouncer: &ActionSender) {
     let actions = [
         Action::UpdateSideTone,
         Action::UpdateEqualizer,
@@ -275,7 +284,7 @@ fn submit_profile_change(debouncer: &mut Debouncer) {
 }
 
 #[instrument(skip_all)]
-fn submit_full_change(debouncer: &mut Debouncer) {
+fn submit_full_change(debouncer: &ActionSender) {
     submit_profile_change(debouncer);
     let actions = [
         Action::UpdateMicrophoneLight,

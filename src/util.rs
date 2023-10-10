@@ -14,12 +14,12 @@ impl<T: Clone> CopySlice<T> for &[T] {
 }
 
 pub trait PeekExt<T, R> {
-    fn peek(self, func: impl FnOnce(&T) -> R) -> Self;
+    fn peek(self, func: impl FnOnce(&mut T) -> R) -> Self;
 }
 
 impl<T, R> PeekExt<T, R> for Option<T> {
-    fn peek(self, func: impl FnOnce(&T) -> R) -> Self {
-        if let Some(inner) = self.as_ref() {
+    fn peek(mut self, func: impl FnOnce(&mut T) -> R) -> Self {
+        if let Some(inner) = self.as_mut() {
             func(inner);
         }
         self

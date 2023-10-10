@@ -3,13 +3,13 @@ use tracing::instrument;
 
 use crate::audio::{AudioDevice, AudioSystem};
 use crate::config::{CallAction, HeadsetConfig, OsAudio};
-use crate::debouncer::{Action, Debouncer};
+use crate::debouncer::{Action, ActionSender};
 use crate::devices::Device;
 use crate::ui::ResponseExt;
 
 #[instrument(skip_all)]
 pub fn headset_section(
-    ui: &mut Ui, debouncer: &mut Debouncer, auto_update: bool, headset: &mut HeadsetConfig, device: &dyn Device, audio_system: &mut AudioSystem
+    ui: &mut Ui, debouncer: &ActionSender, auto_update: bool, headset: &mut HeadsetConfig, device: &dyn Device, audio_system: &mut AudioSystem
 ) {
     if device.get_inactive_time().is_some() {
         ui.horizontal(|ui| {
