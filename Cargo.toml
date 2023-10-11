@@ -9,9 +9,9 @@ lto = true
 codegen-units=1
 
 [features]
-directx = ["egui-d3d11"]
-opengl = ["glutin", "glow", "egui_glow", "glutin-tao"]
-default = ["opengl"]
+#directx = ["egui-d3d11"]
+#opengl = ["glutin", "glow", "egui_glow", "glutin-tao"]
+#default = ["opengl"]
 
 [dependencies]
 tracing = "0.1"
@@ -35,17 +35,17 @@ flume = "0.11"
 async-hid = { git = "https://github.com/sidit77/async-hid.git"}
 #async-hid = {path = "../async-hid"}
 
-egui = "0.22"
+egui = "0.23"
 raw-window-handle = "0.5"
-tao = { version = "0.20", features = ["tray"] }
-egui-tao = { git = "https://github.com/sidit77/egui-tao.git"}
+egui-winit = "0.23"
+winit = "0.28"
 
-glutin = { version = "0.30", optional = true }
-glow = { version = "0.12", optional = true }
-egui_glow = { version = "0.22", optional = true }
-glutin-tao = { git = "https://github.com/sidit77/glutin-tao.git", optional = true }
+glutin = { version = "0.30" }
+glow = { version = "0.12"}
+egui_glow = { version = "0.23" }
+glutin-winit = "0.3"
 
-egui-d3d11 = { git = "https://github.com/sidit77/egui-d3d11.git", optional = true}
+#egui-d3d11 = { git = "https://github.com/sidit77/egui-d3d11.git", optional = true}
 
 [target."cfg(not(target_os = \"windows\"))".dependencies]
 notify-rust = "4.7"
