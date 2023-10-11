@@ -192,52 +192,10 @@ fn main() -> Result<()> {
                 }
             }
              */
-            Event::NewEvents(_) | Event::LoopDestroyed => {
-                while let Some(action) = debouncer.next() {
-                    let _span = tracing::info_span!("debouncer_event", ?action).entered();
-                    tracing::trace!("Processing event");
-                    match action {
-
-                        Action::UpdateSystemAudio => {
-                            let device = device.lock();
-                            if let Some(device) = device.as_ref() {
-                                let mut config = config.lock();
-                                let headset = config.get_headset(device.name());
-                                audio_system.apply(&headset.os_audio, device.is_connected())
-                            }
-                        }
-                        Action::SaveConfig => {
-                            config
-                                .lock()
-                                .save()
-                                .unwrap_or_else(|err| tracing::warn!("Could not save config: {:?}", err));
-                        }
-                        Action::UpdateTray => {
-                            //let mut config = config.lock();
-                            //update_tray(&mut tray, &mut config, device.lock().as_ref().map(|d| d.name()))
-                        },
-                        Action::UpdateTrayTooltip => {
-                            //update_tray_tooltip(&mut tray, &device.lock())
-                        },
-                        action => {
-                            let device = device.lock();
-                            if let Some(device) = device.as_ref() {
-                                let mut config = config.lock();
-                                let headset = config.get_headset(device.name());
-                                apply_config_to_device(action, device.as_ref(), headset)
-                            }
-                        }
-                    }
-                }
-            },
             _ => ()
         }
         if !matches!(*control_flow, ControlFlow::ExitWithCode(_)) {
-            let next_window_update = window.as_ref().and_then(|w| w.next_repaint());
-            let next_update = [next_window_update, debouncer.next_action()]
-                .into_iter()
-                .flatten()
-                .min();
+            let next_update = window.as_ref().and_then(|w| w.next_repaint());
             *control_flow = match next_update {
                 Some(next_update) => match next_update <= Instant::now() {
                     true => ControlFlow::Poll,
@@ -332,8 +290,37 @@ async fn action_handler(
                     tracing::debug!("Preferred device is already active")
                 }
             }
-            _ => {
-
+            Action::UpdateSystemAudio => {
+                //TODO REIMPLEMENT
+                //let device = device.lock();
+                //if let Some(device) = device.as_ref() {
+                //    let mut config = config.lock();
+                //    let headset = config.get_headset(device.name());
+                //    audio_system.apply(&headset.os_audio, device.is_connected())
+                //}
+            }
+            Action::SaveConfig => {
+                config
+                    .lock()
+                    .save()
+                    .unwrap_or_else(|err| tracing::warn!("Could not save config: {:?}", err));
+            }
+            Action::UpdateTray => {
+                //TODO REIMPLEMENT
+                //let mut config = config.lock();
+                //update_tray(&mut tray, &mut config, device.lock().as_ref().map(|d| d.name()))
+            },
+            Action::UpdateTrayTooltip => {
+                //TODO REIMPLEMENT
+                //update_tray_tooltip(&mut tray, &device.lock())
+            },
+            action => {
+                let device = device.lock();
+                if let Some(device) = device.as_ref() {
+                    let mut config = config.lock();
+                    let headset = config.get_headset(device.name());
+                    apply_config_to_device(action, device.as_ref(), headset)
+                }
             }
         }
     }
