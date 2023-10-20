@@ -13,6 +13,7 @@ use winit::event_loop::{EventLoop, EventLoopBuilder, EventLoopProxy};
 use winit::platform::run_return::EventLoopExtRunReturn;
 use winit::window::WindowBuilder;
 use crate::framework::runtime::reactor::{EventLoopOp, Reactor};
+use crate::framework::window::{Gui, GuiWindowHandle};
 
 pub struct EventLoopWaker {
     proxy: EventLoopProxy<Wakeup>,
@@ -68,7 +69,7 @@ pub fn block_on<F: Future>(fut: F) -> F::Output {
     let mut future_result = None;
     let result = &mut future_result;
     event_loop.run_return(move |event, target, flow| {
-        let _about_to_sleep = match &event {
+        let about_to_sleep = match &event {
             Event::NewEvents(_) => {
                 yielding = false;
                 notifier.awake.store(true, Ordering::SeqCst);
@@ -80,6 +81,8 @@ pub fn block_on<F: Future>(fut: F) -> F::Output {
             }
             _ => false
         };
+
+        reactor.process_event(&event);
 
         reactor.process_loop_ops(target);
 
@@ -96,6 +99,10 @@ pub fn block_on<F: Future>(fut: F) -> F::Output {
             reactor.process_loop_ops(target);
         }
 
+        if about_to_sleep {
+            deadline = reactor.calculate_deadline();
+        }
+
         if result.is_some() {
             flow.set_exit();
         } else if yielding {
@@ -109,30 +116,12 @@ pub fn block_on<F: Future>(fut: F) -> F::Output {
     future_result.unwrap()
 }
 
-
-pub struct Window {
-    reactor: Rc<Reactor>,
-    window: winit::window::Window,
-}
-
-impl Window {
-
-    pub async fn new() -> Self {
-        let builder = WindowBuilder::new()
-            .with_title("Hello World");
-
-        let reactor = Reactor::current();
-        let (tx, rx) = oneshot();
-        reactor.insert_event_loop_op(EventLoopOp::BuildWindow {
-            builder: Box::new(builder),
-            sender: tx,
-        });
-        let window = rx.await.unwrap().unwrap();
-
-        Self {
-            reactor,
-            window,
-        }
-    }
-
+pub async fn window(gui: Gui) -> GuiWindowHandle {
+    let reactor = Reactor::current();
+    let (tx, rx) = oneshot();
+    reactor.insert_event_loop_op(EventLoopOp::BuildWindow {
+        gui,
+        sender: tx,
+    });
+    rx.await.unwrap()
 }

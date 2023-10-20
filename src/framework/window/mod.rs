@@ -165,3 +165,5 @@ impl<C: GraphicsContext> Drop for GuiWindow<C> {
         self.painter.destroy();
     }
 }
+
+pub struct GuiWindowHandle;

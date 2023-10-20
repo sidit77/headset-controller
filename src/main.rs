@@ -9,16 +9,15 @@ use futures_lite::{StreamExt, FutureExt};
 use tracing_subscriber::filter::FilterExt;
 use winit::event_loop::{ControlFlow, EventLoopBuilder};
 use winit::platform::run_return::EventLoopExtRunReturn;
-use crate::framework::runtime::Window;
+use crate::framework::runtime::window;
 use crate::framework::window::{DefaultGuiWindow, Gui};
 
 
 fn main() {
-/*
     framework::runtime::block_on(async {
         let fut1 = async {
             Timer::interval(Duration::from_secs(1))
-                .take(5)
+                .take(20)
                 .enumerate()
                 .for_each(|(i, _)| println!("{i}"))
                 .await;
@@ -27,20 +26,38 @@ fn main() {
         let fut2 = async {
             Timer::after(Duration::from_millis(500)).await;
             Timer::interval(Duration::from_secs(1))
-                .take(5)
+                .take(20)
                 .enumerate()
                 .for_each(|(i, _)| println!("{i}.5"))
                 .await;
         };
 
         let fut3 = async {
-            let window = Window::new().await;
+            let window = window(Gui::new(|ctx: &egui::Context | {
+                static REPAINTS: AtomicU64 = AtomicU64::new(0);
+                egui::SidePanel::left("my_side_panel").show(ctx, |ui| {
+                    ui.heading("Hello World!");
+
+                    if ui.button("Quit").clicked() {
+                        //quit = true;
+                        println!("Click!");
+                    }
+                    //ui.color_edit_button_rgb(&mut clear_color);
+                    ui.collapsing("Spinner", |ui| ui.spinner());
+                });
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.centered_and_justified(|ui| {
+                        ui.label(format!("draws: {}", REPAINTS.fetch_add(1, Ordering::Relaxed)));
+                    });
+                });
+            })).await;
             std::future::pending::<()>().await;
         };
 
         fut1.or(fut2).or(fut3).await;
     });
-*/
+
+    /*
     let mut event_loop = EventLoopBuilder::new()
         .build();
 
@@ -73,7 +90,7 @@ fn main() {
             control_flow.set_exit();
         }
     });
-
+*/
 }
 
 

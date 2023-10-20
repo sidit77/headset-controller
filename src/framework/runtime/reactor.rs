@@ -1,16 +1,22 @@
 use std::cell::{RefCell, Cell};
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Instant;
 use async_oneshot::Sender;
 use winit::error::OsError;
+use winit::event::Event;
 use winit::event_loop::EventLoopWindowTarget;
 use winit::window::{Window, WindowBuilder};
 use crate::framework::runtime::{EventLoopWaker, Wakeup};
+use crate::framework::window::{DefaultGuiWindow, Gui, GuiWindow, GuiWindowHandle};
 
 pub struct Reactor {
     waker: Arc<EventLoopWaker>,
+
+    next_window_id: Cell<usize>,
+    active_windows: RefCell<BTreeMap<usize, DefaultGuiWindow>>,
 
     event_loop_ops: RefCell<VecDeque<EventLoopOp>>
 }
@@ -20,6 +26,8 @@ impl Reactor {
     pub fn new(waker: Arc<EventLoopWaker>) -> Self {
         Self {
             waker,
+            next_window_id: Cell::new(0),
+            active_windows: RefCell::new(Default::default()),
             event_loop_ops: RefCell::new(VecDeque::new()),
         }
     }
@@ -53,7 +61,22 @@ impl Reactor {
         self.event_loop_ops
             .borrow_mut()
             .drain(..)
-            .for_each(|op| op.run(target));
+            .for_each(|op| op.run(self, target));
+    }
+
+    pub fn process_event(&self, event: &Event<Wakeup>) {
+        self.active_windows
+            .borrow_mut()
+            .values_mut()
+            .for_each(|window| window.handle_events(event));
+    }
+
+    pub fn calculate_deadline(&self) -> Option<Instant> {
+        self.active_windows
+            .borrow()
+            .values()
+            .filter_map(GuiWindow::next_repaint)
+            .min()
     }
 
 }
@@ -74,18 +97,20 @@ impl Drop for ReactorGuard {
 
 pub enum EventLoopOp {
     BuildWindow {
-        builder: Box<WindowBuilder>,
-        sender: Sender<Result<Window, OsError>>
+        gui: Gui,
+        sender: Sender<GuiWindowHandle>
     }
 }
 
 impl EventLoopOp {
-    fn run(self, target: &EventLoopWindowTarget<Wakeup>) {
+    fn run(self, reactor: &Reactor, target: &EventLoopWindowTarget<Wakeup>) {
         match self {
-            EventLoopOp::BuildWindow { builder, mut sender } => {
+            EventLoopOp::BuildWindow { gui, mut sender } => {
                 if !sender.is_closed() {
-                    let window = builder.build(target);
-                    let _ = sender.send(window);
+                    let window = GuiWindow::new(target, gui);
+                    let id = reactor.next_window_id.replace(reactor.next_window_id.get() + 1);
+                    reactor.active_windows.borrow_mut().insert(id, window);
+                    let _ = sender.send(GuiWindowHandle);
                 }
             }
         }
