@@ -2,27 +2,53 @@
 
 mod framework;
 
+use std::time::Duration;
+use async_io::Timer;
+use futures_lite::{StreamExt, FutureExt};
+use tracing_subscriber::filter::FilterExt;
 use winit::event_loop::{ControlFlow, EventLoopBuilder};
 use winit::platform::run_return::EventLoopExtRunReturn;
 use crate::framework::window::DefaultGuiWindow;
 
 
 fn main() {
-    let mut event_loop = EventLoopBuilder::new()
-        .build();
 
-    let mut gui = DefaultGuiWindow::new(&event_loop);
+    framework::runtime::block_on(async {
+        let fut1 = async {
+            Timer::interval(Duration::from_secs(1))
+                .take(5)
+                .enumerate()
+                .for_each(|(i, _)| println!("{i}"))
+                .await;
+        };
 
-    event_loop.run_return(move |event, _, control_flow| {
-        gui.handle_events(&event);
-        *control_flow = gui
-            .next_repaint()
-            .map(ControlFlow::WaitUntil)
-            .unwrap_or(ControlFlow::Wait);
-        if gui.is_close_requested() {
-            control_flow.set_exit();
-        }
+        let fut2 = async {
+            Timer::after(Duration::from_millis(500)).await;
+            Timer::interval(Duration::from_secs(1))
+                .take(5)
+                .enumerate()
+                .for_each(|(i, _)| println!("{i}.5"))
+                .await;
+        };
+
+        fut1.or(fut2).await;
     });
+
+    //let mut event_loop = EventLoopBuilder::new()
+    //    .build();
+//
+    //let mut gui = DefaultGuiWindow::new(&event_loop);
+//
+    //event_loop.run_return(move |event, _, control_flow| {
+    //    gui.handle_events(&event);
+    //    *control_flow = gui
+    //        .next_repaint()
+    //        .map(ControlFlow::WaitUntil)
+    //        .unwrap_or(ControlFlow::Wait);
+    //    if gui.is_close_requested() {
+    //        control_flow.set_exit();
+    //    }
+    //});
 
 }
 

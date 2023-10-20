@@ -32,6 +32,7 @@ fixed-map = "0.9"
 parking_lot = "0.12"
 flume = "0.11"
 
+async-io = "2"
 async-hid = { git = "https://github.com/sidit77/async-hid.git"}
 #async-hid = {path = "../async-hid"}
 
