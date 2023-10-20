@@ -337,13 +337,13 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
                     mic_light.set_light_strength(headset.mic_light);
                 }
             }
-            Action::UpdateBluetoothCall => {
+            Action::UpdateAutoBluetooth => {
                 if let Some(bluetooth_config) = device.get_bluetooth_config() {
                     let _span = tracing::info_span!("bluetooth").entered();
                     bluetooth_config.set_auto_enabled(headset.auto_enable_bluetooth);
                 }
             }
-            Action::UpdateAutoBluetooth => {
+            Action::UpdateBluetoothCall => {
                 if let Some(bluetooth_config) = device.get_bluetooth_config() {
                     let _span = tracing::info_span!("bluetooth").entered();
                     bluetooth_config.set_call_action(headset.bluetooth_call);
