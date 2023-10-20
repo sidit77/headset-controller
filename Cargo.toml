@@ -45,7 +45,8 @@ glow = { version = "0.12"}
 egui_glow = { version = "0.23" }
 glutin-winit = "0.3"
 
-#egui-d3d11 = { git = "https://github.com/sidit77/egui-d3d11.git", optional = true}
+#egui-d3d11 = { git = "https://github.com/sidit77/egui-d3d11.git"}
+egui-d3d11 = { path = "../egui-d3d11"}
 
 [target."cfg(not(target_os = \"windows\"))".dependencies]
 notify-rust = "4.7"
@@ -58,7 +59,7 @@ winreg = "0.50"
 dunce = "1"
 
 [target."cfg(target_os = \"windows\")".dependencies.windows]
-version = "0.48"
+version = "0.51"
 features = [
     "Win32_Foundation",
     "Win32_Media_Audio",
@@ -73,7 +74,7 @@ features = [
     "Foundation_Collections",
     "Data_Xml_Dom",
     "UI_Notifications",
-    "implement",
+    "implement"
 ]
 
 [target."cfg(target_os = \"windows\")".build-dependencies]

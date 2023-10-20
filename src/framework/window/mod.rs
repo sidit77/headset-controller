@@ -11,9 +11,9 @@ use winit::event::Event;
 use winit::event_loop::EventLoopWindowTarget;
 use winit::window::{Window, WindowBuilder};
 
-use graphics::{GraphicsContext, GuiPainter, WindowBuilderExt, OpenGLContext};
+use graphics::{GraphicsContext, GuiPainter, WindowBuilderExt, OpenGLContext, D3D11Context};
 
-pub type DefaultGuiWindow = GuiWindow<OpenGLContext>;
+pub type DefaultGuiWindow = GuiWindow<D3D11Context>;
 
 pub struct GuiWindow<C: GraphicsContext> {
     window: Window,
