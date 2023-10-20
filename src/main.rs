@@ -2,6 +2,7 @@
 
 mod framework;
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use async_io::Timer;
 use futures_lite::{StreamExt, FutureExt};
@@ -9,11 +10,11 @@ use tracing_subscriber::filter::FilterExt;
 use winit::event_loop::{ControlFlow, EventLoopBuilder};
 use winit::platform::run_return::EventLoopExtRunReturn;
 use crate::framework::runtime::Window;
-use crate::framework::window::DefaultGuiWindow;
+use crate::framework::window::{DefaultGuiWindow, Gui};
 
 
 fn main() {
-
+/*
     framework::runtime::block_on(async {
         let fut1 = async {
             Timer::interval(Duration::from_secs(1))
@@ -39,22 +40,39 @@ fn main() {
 
         fut1.or(fut2).or(fut3).await;
     });
+*/
+    let mut event_loop = EventLoopBuilder::new()
+        .build();
 
-    //let mut event_loop = EventLoopBuilder::new()
-    //    .build();
-//
-    //let mut gui = DefaultGuiWindow::new(&event_loop);
-//
-    //event_loop.run_return(move |event, _, control_flow| {
-    //    gui.handle_events(&event);
-    //    *control_flow = gui
-    //        .next_repaint()
-    //        .map(ControlFlow::WaitUntil)
-    //        .unwrap_or(ControlFlow::Wait);
-    //    if gui.is_close_requested() {
-    //        control_flow.set_exit();
-    //    }
-    //});
+    let mut gui = DefaultGuiWindow::new(&event_loop, Gui::new(|ctx: &egui::Context | {
+        static REPAINTS: AtomicU64 = AtomicU64::new(0);
+        egui::SidePanel::left("my_side_panel").show(ctx, |ui| {
+            ui.heading("Hello World!");
+
+            if ui.button("Quit").clicked() {
+                //quit = true;
+                println!("Click!");
+            }
+            //ui.color_edit_button_rgb(&mut clear_color);
+            ui.collapsing("Spinner", |ui| ui.spinner());
+        });
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.centered_and_justified(|ui| {
+                ui.label(format!("draws: {}", REPAINTS.fetch_add(1, Ordering::Relaxed)));
+            });
+        });
+    }));
+
+    event_loop.run_return(move |event, _, control_flow| {
+        gui.handle_events(&event);
+        *control_flow = gui
+            .next_repaint()
+            .map(ControlFlow::WaitUntil)
+            .unwrap_or(ControlFlow::Wait);
+        if gui.is_close_requested() {
+            control_flow.set_exit();
+        }
+    });
 
 }
 

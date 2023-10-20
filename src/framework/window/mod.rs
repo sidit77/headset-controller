@@ -1,6 +1,5 @@
 mod graphics;
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use egui::{Context, FullOutput, Visuals};
@@ -15,7 +14,21 @@ use graphics::{GraphicsContext, GuiPainter, WindowBuilderExt, OpenGLContext, D3D
 
 pub type DefaultGuiWindow = GuiWindow<D3D11Context>;
 
+pub struct Gui(Box<dyn FnMut(&Context)>);
+impl Gui {
+
+    pub fn new<F: FnMut(&Context) + 'static>(func: F) -> Self {
+        Self(Box::new(func))
+    }
+
+    fn render(&mut self, ctx: &Context) {
+        self.0(ctx)
+    }
+}
+
+
 pub struct GuiWindow<C: GraphicsContext> {
+    gui: Gui,
     window: Window,
     graphics: C,
     painter: C::Painter,
@@ -26,7 +39,7 @@ pub struct GuiWindow<C: GraphicsContext> {
 }
 
 impl<C: GraphicsContext> GuiWindow<C> {
-    pub fn new<T>(event_loop: &EventLoopWindowTarget<T>) -> Self {
+    pub fn new<T>(event_loop: &EventLoopWindowTarget<T>, gui: Gui) -> Self {
         let (window, graphics) = WindowBuilder::new()
             .with_resizable(true)
             .with_inner_size(LogicalSize { width: 800.0, height: 600.0 })
@@ -42,6 +55,7 @@ impl<C: GraphicsContext> GuiWindow<C> {
         let state = State::new(&window);
 
         Self {
+            gui,
             window,
             graphics,
             painter,
@@ -111,25 +125,6 @@ impl<C: GraphicsContext> GuiWindow<C> {
     }
 
     fn redraw(&mut self) {
-        let gui = |ctx: &Context| {
-            static REPAINTS: AtomicU64 = AtomicU64::new(0);
-            egui::SidePanel::left("my_side_panel").show(ctx, |ui| {
-                ui.heading("Hello World!");
-
-                if ui.button("Quit").clicked() {
-                    //quit = true;
-                    println!("Click!");
-                }
-                //ui.color_edit_button_rgb(&mut clear_color);
-                ui.collapsing("Spinner", |ui| ui.spinner());
-            });
-            egui::CentralPanel::default().show(ctx, |ui| {
-                ui.centered_and_justified(|ui| {
-                    ui.label(format!("draws: {}", REPAINTS.fetch_add(1, Ordering::Relaxed)));
-                });
-            });
-        };
-
 
         let raw_input = self.state.take_egui_input(&self.window);
         let FullOutput {
@@ -137,7 +132,7 @@ impl<C: GraphicsContext> GuiWindow<C> {
             repaint_after,
             mut textures_delta,
             shapes
-        } = self.ctx.run(raw_input, gui);
+        } = self.ctx.run(raw_input, |ctx| self.gui.render(ctx));
 
         self.state.handle_platform_output(&self.window, &self.ctx, platform_output);
 
