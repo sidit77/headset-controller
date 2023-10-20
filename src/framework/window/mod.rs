@@ -1,5 +1,7 @@
 mod graphics;
 
+use std::cell::OnceCell;
+use std::future::Future;
 use std::time::Instant;
 
 use egui::{Context, FullOutput, Visuals};
@@ -10,7 +12,7 @@ use winit::event::Event;
 use winit::event_loop::EventLoopWindowTarget;
 use winit::window::{Window, WindowBuilder};
 
-use graphics::{GraphicsContext, GuiPainter, WindowBuilderExt, OpenGLContext, D3D11Context};
+use graphics::{GraphicsContext, GuiPainter, WindowBuilderExt, D3D11Context};
 
 pub type DefaultGuiWindow = GuiWindow<D3D11Context>;
 
@@ -35,7 +37,8 @@ pub struct GuiWindow<C: GraphicsContext> {
     ctx: Context,
     state: State,
     next_repaint: Option<Instant>,
-    close_requested: bool
+    close_requested: bool,
+    close_event: OnceCell<event_listener::Event>
 }
 
 impl<C: GraphicsContext> GuiWindow<C> {
@@ -63,6 +66,7 @@ impl<C: GraphicsContext> GuiWindow<C> {
             state,
             next_repaint: Some(Instant::now()),
             close_requested: false,
+            close_event: Default::default(),
         }
     }
 
@@ -70,8 +74,14 @@ impl<C: GraphicsContext> GuiWindow<C> {
         self.next_repaint
     }
 
+    #[allow(dead_code)]
     pub fn is_close_requested(&self) -> bool {
         self.close_requested
+    }
+
+    pub fn close_requested(&self) -> impl Future<Output=()> {
+        self.close_event.get_or_init(event_listener::Event::new)
+            .listen()
     }
 
     fn request_redraw(&mut self) {
@@ -89,6 +99,9 @@ impl<C: GraphicsContext> GuiWindow<C> {
 
                 if let WindowEvent::CloseRequested = &event {
                     self.close_requested = true;
+                    if let Some(event) = self.close_event.get() {
+                        event.notify(usize::MAX);
+                    }
                 }else if let WindowEvent::Resized(physical_size) = &event {
                     self.graphics.resize(*physical_size);
                 } else if let WindowEvent::ScaleFactorChanged { new_inner_size, .. } = &event {
@@ -165,5 +178,3 @@ impl<C: GraphicsContext> Drop for GuiWindow<C> {
         self.painter.destroy();
     }
 }
-
-pub struct GuiWindowHandle;

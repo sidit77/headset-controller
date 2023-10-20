@@ -6,15 +6,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use async_io::Timer;
 use futures_lite::{StreamExt, FutureExt};
-use tracing_subscriber::filter::FilterExt;
-use winit::event_loop::{ControlFlow, EventLoopBuilder};
-use winit::platform::run_return::EventLoopExtRunReturn;
-use crate::framework::runtime::window;
-use crate::framework::window::{DefaultGuiWindow, Gui};
+use crate::framework::{AsyncGuiWindow, Gui};
 
 
 fn main() {
-    framework::runtime::block_on(async {
+    framework::block_on(async {
         let fut1 = async {
             Timer::interval(Duration::from_secs(1))
                 .take(20)
@@ -33,7 +29,7 @@ fn main() {
         };
 
         let fut3 = async {
-            let window = window(Gui::new(|ctx: &egui::Context | {
+            let window = AsyncGuiWindow::new(Gui::new(|ctx: &egui::Context | {
                 static REPAINTS: AtomicU64 = AtomicU64::new(0);
                 egui::SidePanel::left("my_side_panel").show(ctx, |ui| {
                     ui.heading("Hello World!");
@@ -51,7 +47,7 @@ fn main() {
                     });
                 });
             })).await;
-            std::future::pending::<()>().await;
+            window.close_requested().await;
         };
 
         fut1.or(fut2).or(fut3).await;

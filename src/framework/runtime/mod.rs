@@ -1,4 +1,5 @@
 mod reactor;
+mod window;
 
 use std::future::Future;
 use std::rc::Rc;
@@ -6,14 +7,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll, Wake, Waker};
 use std::time::Instant;
-use async_oneshot::oneshot;
 use futures_lite::pin;
 use winit::event::Event;
 use winit::event_loop::{EventLoop, EventLoopBuilder, EventLoopProxy};
 use winit::platform::run_return::EventLoopExtRunReturn;
-use winit::window::WindowBuilder;
-use crate::framework::runtime::reactor::{EventLoopOp, Reactor};
-use crate::framework::window::{Gui, GuiWindowHandle};
+use crate::framework::runtime::reactor::{Reactor};
+
+pub use window::AsyncGuiWindow;
 
 pub struct EventLoopWaker {
     proxy: EventLoopProxy<Wakeup>,
@@ -66,9 +66,8 @@ pub fn block_on<F: Future>(fut: F) -> F::Output {
     let reactor = Rc::new(Reactor::new(notifier.clone()));
     let _guard = reactor.install();
 
-    let mut future_result = None;
-    let result = &mut future_result;
-    event_loop.run_return(move |event, target, flow| {
+    let mut result = None;
+    event_loop.run_return( |event, target, flow| {
         let about_to_sleep = match &event {
             Event::NewEvents(_) => {
                 yielding = false;
@@ -89,7 +88,7 @@ pub fn block_on<F: Future>(fut: F) -> F::Output {
         while result.is_none() && !yielding && notifier.notified.swap(false, Ordering::SeqCst) {
             let mut cx = Context::from_waker(&waker);
             match fut.as_mut().poll(&mut cx) {
-                Poll::Ready(r) => *result = Some(r),
+                Poll::Ready(r) => result = Some(r),
                 Poll::Pending => {
                     if notifier.notified.load(Ordering::SeqCst) {
                         yielding = true;
@@ -113,15 +112,6 @@ pub fn block_on<F: Future>(fut: F) -> F::Output {
             flow.set_wait()
         }
     });
-    future_result.unwrap()
-}
-
-pub async fn window(gui: Gui) -> GuiWindowHandle {
-    let reactor = Reactor::current();
-    let (tx, rx) = oneshot();
-    reactor.insert_event_loop_op(EventLoopOp::BuildWindow {
-        gui,
-        sender: tx,
-    });
-    rx.await.unwrap()
+    reactor.close();
+    result.unwrap()
 }

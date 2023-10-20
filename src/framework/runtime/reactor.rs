@@ -5,12 +5,10 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
 use async_oneshot::Sender;
-use winit::error::OsError;
 use winit::event::Event;
 use winit::event_loop::EventLoopWindowTarget;
-use winit::window::{Window, WindowBuilder};
 use crate::framework::runtime::{EventLoopWaker, Wakeup};
-use crate::framework::window::{DefaultGuiWindow, Gui, GuiWindow, GuiWindowHandle};
+use crate::framework::window::{DefaultGuiWindow, Gui, GuiWindow};
 
 pub struct Reactor {
     waker: Arc<EventLoopWaker>,
@@ -79,6 +77,31 @@ impl Reactor {
             .min()
     }
 
+    pub fn remove_window(&self, id: usize) {
+        self
+            .active_windows
+            .borrow_mut()
+            .remove(&id)
+            .expect("No such window");
+    }
+
+    pub fn with_window<T>(&self, id: usize, func: impl FnOnce(&DefaultGuiWindow) -> T) -> T {
+        self
+            .active_windows
+            .borrow()
+            .get(&id)
+            .map(func)
+            .expect("No such window")
+    }
+
+    pub fn close(&self) {
+        let mut windows = self.active_windows.borrow_mut();
+        if !windows.is_empty() {
+            tracing::warn!("{} Windows are still open", windows.len());
+            windows.clear();
+        }
+    }
+
 }
 
 thread_local! {
@@ -98,7 +121,7 @@ impl Drop for ReactorGuard {
 pub enum EventLoopOp {
     BuildWindow {
         gui: Gui,
-        sender: Sender<GuiWindowHandle>
+        sender: Sender<usize>
     }
 }
 
@@ -110,7 +133,7 @@ impl EventLoopOp {
                     let window = GuiWindow::new(target, gui);
                     let id = reactor.next_window_id.replace(reactor.next_window_id.get() + 1);
                     reactor.active_windows.borrow_mut().insert(id, window);
-                    let _ = sender.send(GuiWindowHandle);
+                    let _ = sender.send(id);
                 }
             }
         }

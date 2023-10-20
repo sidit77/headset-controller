@@ -31,6 +31,7 @@ static_assertions = "1"
 fixed-map = "0.9"
 parking_lot = "0.12"
 flume = "0.11"
+event-listener = "3"
 
 async-io = "2"
 async-oneshot = "0.5"
