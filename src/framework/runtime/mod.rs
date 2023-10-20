@@ -1,14 +1,20 @@
+mod reactor;
+
 use std::future::Future;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll, Wake, Waker};
 use std::time::Instant;
+use async_oneshot::oneshot;
 use futures_lite::pin;
 use winit::event::Event;
 use winit::event_loop::{EventLoop, EventLoopBuilder, EventLoopProxy};
 use winit::platform::run_return::EventLoopExtRunReturn;
+use winit::window::WindowBuilder;
+use crate::framework::runtime::reactor::{EventLoopOp, Reactor};
 
-struct EventLoopWaker {
+pub struct EventLoopWaker {
     proxy: EventLoopProxy<Wakeup>,
     notified: AtomicBool,
     awake: AtomicBool
@@ -42,7 +48,7 @@ impl Wake for EventLoopWaker {
     }
 }
 
-struct Wakeup;
+pub struct Wakeup;
 
 pub fn block_on<F: Future>(fut: F) -> F::Output {
     pin!(fut);
@@ -55,6 +61,9 @@ pub fn block_on<F: Future>(fut: F) -> F::Output {
 
     let mut yielding = false;
     let mut deadline: Option<Instant> = None;
+
+    let reactor = Rc::new(Reactor::new(notifier.clone()));
+    let _guard = reactor.install();
 
     let mut future_result = None;
     let result = &mut future_result;
@@ -72,6 +81,8 @@ pub fn block_on<F: Future>(fut: F) -> F::Output {
             _ => false
         };
 
+        reactor.process_loop_ops(target);
+
         while result.is_none() && !yielding && notifier.notified.swap(false, Ordering::SeqCst) {
             let mut cx = Context::from_waker(&waker);
             match fut.as_mut().poll(&mut cx) {
@@ -82,6 +93,7 @@ pub fn block_on<F: Future>(fut: F) -> F::Output {
                     }
                 }
             }
+            reactor.process_loop_ops(target);
         }
 
         if result.is_some() {
@@ -95,4 +107,32 @@ pub fn block_on<F: Future>(fut: F) -> F::Output {
         }
     });
     future_result.unwrap()
+}
+
+
+pub struct Window {
+    reactor: Rc<Reactor>,
+    window: winit::window::Window,
+}
+
+impl Window {
+
+    pub async fn new() -> Self {
+        let builder = WindowBuilder::new()
+            .with_title("Hello World");
+
+        let reactor = Reactor::current();
+        let (tx, rx) = oneshot();
+        reactor.insert_event_loop_op(EventLoopOp::BuildWindow {
+            builder: Box::new(builder),
+            sender: tx,
+        });
+        let window = rx.await.unwrap().unwrap();
+
+        Self {
+            reactor,
+            window,
+        }
+    }
+
 }

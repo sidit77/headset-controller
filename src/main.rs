@@ -8,6 +8,7 @@ use futures_lite::{StreamExt, FutureExt};
 use tracing_subscriber::filter::FilterExt;
 use winit::event_loop::{ControlFlow, EventLoopBuilder};
 use winit::platform::run_return::EventLoopExtRunReturn;
+use crate::framework::runtime::Window;
 use crate::framework::window::DefaultGuiWindow;
 
 
@@ -31,7 +32,12 @@ fn main() {
                 .await;
         };
 
-        fut1.or(fut2).await;
+        let fut3 = async {
+            let window = Window::new().await;
+            std::future::pending::<()>().await;
+        };
+
+        fut1.or(fut2).or(fut3).await;
     });
 
     //let mut event_loop = EventLoopBuilder::new()
