@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
-use async_oneshot::Sender;
+use oneshot::Sender;
 use winit::event::Event;
 use winit::event_loop::EventLoopWindowTarget;
 use crate::framework::runtime::{EventLoopWaker, Wakeup};
@@ -130,14 +130,12 @@ pub enum EventLoopOp {
 impl EventLoopOp {
     fn run(self, reactor: &Reactor, target: &EventLoopWindowTarget<Wakeup>) {
         match self {
-            EventLoopOp::BuildWindow { gui, mut sender } => {
-                if !sender.is_closed() {
-                    let window = GuiWindow::new(target, gui);
-                    let id = reactor.next_window_id.replace(reactor.next_window_id.get() + 1);
-                    reactor.active_windows.borrow_mut().insert(id, window);
-                    tracing::trace!("Registered new gui window with id {}", id);
-                    let _ = sender.send(id);
-                }
+            EventLoopOp::BuildWindow { gui, sender } => {
+                 let window = GuiWindow::new(target, gui);
+                 let id = reactor.next_window_id.replace(reactor.next_window_id.get() + 1);
+                 reactor.active_windows.borrow_mut().insert(id, window);
+                 tracing::trace!("Registered new gui window with id {}", id);
+                 let _ = sender.send(id);
             }
         }
     }

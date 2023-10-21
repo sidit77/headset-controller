@@ -1,11 +1,10 @@
-use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use async_io::Timer;
 use fixed_map::{Key, Map};
-use futures_lite::{Stream};
-use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::time::{Instant, Sleep, sleep_until};
+use flume::{Sender};
+use futures_lite::{FutureExt, Stream, StreamExt};
 use tracing::instrument;
 
 use crate::util::PeekExt;
@@ -118,11 +117,10 @@ impl ActionSender for ActionProxy {
     }
 }
 
-#[derive(Debug)]
 pub struct ActionReceiver {
-    receiver: Receiver<ActionOp>,
+    receiver: flume::r#async::RecvStream<'static, ActionOp>,
     actions: Map<Action, Instant>,
-    timer: Pin<Box<Option<Sleep>>>
+    timer: Timer
 }
 
 impl ActionSender for ActionReceiver {
@@ -148,8 +146,11 @@ impl Stream for ActionReceiver {
     type Item = Action;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        loop {
-            match self.receiver.poll_recv(cx) {
+        if self.receiver.is_disconnected() {
+
+        }
+        let empty_remaining = self.receiver.is_disconnected() || loop {
+            match self.receiver.poll_next(cx) {
                 Poll::Ready(Some(op)) => match op {
                     ActionOp::Submit(action, now) => {
                         let old = self.actions.insert(action, now);
@@ -161,9 +162,15 @@ impl Stream for ActionReceiver {
                         }
                     }
                 },
-                Poll::Ready(None) => return Poll::Ready(None),
-                Poll::Pending => break
+                Poll::Ready(None) => break true,
+                Poll::Pending => break false,
             }
+        };
+        if empty_remaining {
+            return Poll::Ready(self.actions
+                .keys()
+                .next()
+                .peek(|k| self.actions.remove(*k)));
         }
 
         let now = Instant::now();
@@ -186,24 +193,28 @@ impl Stream for ActionReceiver {
             .map(|(k, v)| *v + k.timeout())
             .min();
 
-        self.timer.set(deadline.map(sleep_until));
-        if let Some(timer) = self.timer.as_mut().as_pin_mut() {
-            debug_assert!(timer.poll(cx).is_pending());
-        }
+        self.timer = deadline
+            .map(Timer::at)
+            .unwrap_or_else(Timer::never);// .set(deadline.map(sleep_until));
+        debug_assert!(self.timer.poll(cx).is_pending());
+
+        //if let Some(timer) = self.timer.as_mut().as_pin_mut() {
+        //    debug_assert!(timer.poll(cx).is_pending());
+        //}
 
         Poll::Pending
     }
 }
 
 pub fn debouncer() -> (ActionProxy, ActionReceiver) {
-    let (sender, receiver) = tokio::sync::mpsc::channel(512);
+    let (sender, receiver) = flume::bounded(512);
     let sender = ActionProxy {
         sender,
     };
     let receiver = ActionReceiver {
-        receiver,
+        receiver: receiver.into_stream(),
         actions: Map::new(),
-        timer: Box::pin(None),
+        timer: Timer::never(),
     };
     (sender, receiver)
 }

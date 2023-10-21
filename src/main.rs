@@ -3,6 +3,7 @@
 mod framework;
 mod util;
 mod config;
+mod debouncer;
 
 use color_eyre::Result;
 use std::ops::Not;
@@ -14,7 +15,7 @@ use flume::{Receiver, Sender};
 use futures_lite::{StreamExt, FutureExt};
 use tracing::level_filters::LevelFilter;
 use tracing_error::ErrorLayer;
-use tracing_subscriber::filter::Targets;
+use tracing_subscriber::filter::{Targets};
 use tracing_subscriber::fmt::layer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -23,8 +24,9 @@ use tray_icon::{Icon, TrayIconBuilder};
 use parking_lot::Mutex;
 use tracing::instrument;
 use crate::config::{CLOSE_IMMEDIATELY, Config, START_QUIET};
+use crate::debouncer::{Action, ActionProxy, ActionSender};
 use crate::framework::{AsyncGuiWindow, Gui};
-use crate::util::select;
+use crate::util::{select, WorkerThread};
 
 struct ShowWindow;
 
@@ -34,7 +36,10 @@ fn main() -> Result<()> {
     //let logfile = Mutex::new(log_file());
     tracing_subscriber::registry()
         .with(ErrorLayer::default())
-        .with(Targets::new().with_default(LevelFilter::TRACE))
+        .with(Targets::new()
+            .with_target("async_io", LevelFilter::DEBUG)
+            .with_target("polling", LevelFilter::DEBUG)
+            .with_default(LevelFilter::TRACE))
         .with(layer().without_time())
         //.with(layer().with_ansi(false).with_writer(logfile))
         .init();
@@ -50,28 +55,42 @@ fn main() -> Result<()> {
         let _ = window_sender.send(ShowWindow);
     }
 
+    let (event_sender, event_receiver) = debouncer::debouncer();
+
     let executor = LocalExecutor::new();
-    let window = executor.spawn(manage_window(window_receiver));
+    let worker = executor.spawn(WorkerThread::spawn(move || {
+        let executor = LocalExecutor::new();
+
+        async_io::block_on(executor.run(async move {
+            event_receiver
+                .for_each(|event| println!("Got event: {:?}", event))
+                .await;
+        }));
+        tracing::trace!("Shutting down worker thread");
+        Ok(())
+    }));
+    let window = executor.spawn(manage_window(window_receiver, event_sender));
     let tray = executor.spawn(manage_tray(window_sender));
 
     framework::block_on(executor.run(async move {
-        window.or(tray).await
+        window.or(tray).or(worker).await
     }))
 }
 
 #[instrument(skip_all)]
-async fn manage_window(receiver: Receiver<ShowWindow>) -> Result<()> {
+async fn manage_window(receiver: Receiver<ShowWindow>, event_sender: ActionProxy) -> Result<()> {
     receiver
         .stream()
         .then(|_| async {
-            let window = AsyncGuiWindow::new(Gui::new(|ctx: &egui::Context | {
+            let mut event_sender = event_sender.clone();
+            let window = AsyncGuiWindow::new(Gui::new(move |ctx: &egui::Context | {
                 static REPAINTS: AtomicU64 = AtomicU64::new(0);
                 egui::SidePanel::left("my_side_panel").show(ctx, |ui| {
                     ui.heading("Hello World!");
 
                     if ui.button("Quit").clicked() {
                         //quit = true;
-                        println!("Click!");
+                        event_sender.submit(Action::SaveConfig);
                     }
                     //ui.color_edit_button_rgb(&mut clear_color);
                     ui.collapsing("Spinner", |ui| ui.spinner());

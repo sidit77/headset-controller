@@ -1,6 +1,6 @@
 use std::future::Future;
 use std::rc::Rc;
-use async_oneshot::oneshot;
+use oneshot::channel;
 use crate::framework::runtime::reactor::{EventLoopOp, Reactor};
 use crate::framework::window::Gui;
 
@@ -13,7 +13,7 @@ impl AsyncGuiWindow {
 
     pub async fn new(gui: Gui) -> Self {
         let reactor = Reactor::current();
-        let (tx, rx) = oneshot();
+        let (tx, rx) = channel();
         reactor.insert_event_loop_op(EventLoopOp::BuildWindow {
             gui,
             sender: tx,
