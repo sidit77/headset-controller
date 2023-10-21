@@ -37,7 +37,6 @@ impl AsyncGuiWindow {
 
 impl Drop for AsyncGuiWindow {
     fn drop(&mut self) {
-        println!("Dropping Window {}", self.id);
         self.reactor.remove_window(self.id);
     }
 }

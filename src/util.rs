@@ -1,6 +1,8 @@
+use std::future::Future;
 use crossbeam_utils::atomic::AtomicCell;
+use either::Either;
 use flume::Sender;
-use tao::event_loop::EventLoopProxy;
+use futures_lite::FutureExt;
 
 pub trait CopySlice<T> {
     fn cloned(self) -> Box<[T]>;
@@ -23,6 +25,22 @@ impl<T, R> PeekExt<T, R> for Option<T> {
         }
         self
     }
+}
+
+pub async fn select<F1, F2, L, R>(future1: F1, future2: F2) -> Either<L, R>
+    where
+        F1: Future<Output = L>,
+        F2: Future<Output = R>
+{
+    let future1 = async move {
+        Either::Left(future1.await)
+    };
+
+    let future2 = async move {
+        Either::Right(future2.await)
+    };
+
+    future1.or(future2).await
 }
 
 /*
@@ -94,13 +112,6 @@ pub trait SenderExt<T> {
 impl<T> SenderExt<T> for Sender<T> {
     fn send_log(&self, update: T) {
         self.try_send(update)
-            .unwrap_or_else(|_| tracing::warn!("Could not send message because the receiver is closed"))
-    }
-}
-
-impl<T> SenderExt<T> for EventLoopProxy<T> {
-    fn send_log(&self, update: T) {
-        self.send_event(update)
             .unwrap_or_else(|_| tracing::warn!("Could not send message because the receiver is closed"))
     }
 }

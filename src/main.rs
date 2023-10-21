@@ -1,20 +1,99 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod framework;
+mod util;
+mod config;
 
-use std::future::Future;
+use color_eyre::Result;
+use std::ops::Not;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use async_executor::LocalExecutor;
 use either::Either;
-use flume::{Receiver};
+use flume::{Receiver, Sender};
 use futures_lite::{StreamExt, FutureExt};
+use tracing::level_filters::LevelFilter;
+use tracing_error::ErrorLayer;
+use tracing_subscriber::filter::Targets;
+use tracing_subscriber::fmt::layer;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem};
 use tray_icon::{Icon, TrayIconBuilder};
+use parking_lot::Mutex;
+use tracing::instrument;
+use crate::config::{CLOSE_IMMEDIATELY, Config, START_QUIET};
 use crate::framework::{AsyncGuiWindow, Gui};
+use crate::util::select;
 
 struct ShowWindow;
 
-fn main() {
+fn main() -> Result<()> {
+    //if *PRINT_UDEV_RULES { return Ok(println!("{}", generate_udev_rules()?)); }
+    color_eyre::install()?;
+    //let logfile = Mutex::new(log_file());
+    tracing_subscriber::registry()
+        .with(ErrorLayer::default())
+        .with(Targets::new().with_default(LevelFilter::TRACE))
+        .with(layer().without_time())
+        //.with(layer().with_ansi(false).with_writer(logfile))
+        .init();
+
+    let span = tracing::info_span!("init").entered();
+
+    let config = Arc::new(Mutex::new(Config::load()?));
+
+    span.exit();
+
+    let (window_sender, window_receiver) = flume::unbounded::<ShowWindow>();
+    if START_QUIET.not() {
+        let _ = window_sender.send(ShowWindow);
+    }
+
+    let executor = LocalExecutor::new();
+    let window = executor.spawn(manage_window(window_receiver));
+    let tray = executor.spawn(manage_tray(window_sender));
+
+    framework::block_on(executor.run(async move {
+        window.or(tray).await
+    }))
+}
+
+#[instrument(skip_all)]
+async fn manage_window(receiver: Receiver<ShowWindow>) -> Result<()> {
+    receiver
+        .stream()
+        .then(|_| async {
+            let window = AsyncGuiWindow::new(Gui::new(|ctx: &egui::Context | {
+                static REPAINTS: AtomicU64 = AtomicU64::new(0);
+                egui::SidePanel::left("my_side_panel").show(ctx, |ui| {
+                    ui.heading("Hello World!");
+
+                    if ui.button("Quit").clicked() {
+                        //quit = true;
+                        println!("Click!");
+                    }
+                    //ui.color_edit_button_rgb(&mut clear_color);
+                    ui.collapsing("Spinner", |ui| ui.spinner());
+                });
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.centered_and_justified(|ui| {
+                        ui.label(format!("draws: {}", REPAINTS.fetch_add(1, Ordering::Relaxed)));
+                    });
+                });
+            })).await;
+            while let Either::Right(Ok(ShowWindow)) = select(window.close_requested(), receiver.recv_async()).await {
+                window.focus();
+            }
+            Ok(())
+        })
+        .take(CLOSE_IMMEDIATELY.then_some(1).unwrap_or(usize::MAX))
+        .try_collect()
+        .await
+}
+
+#[instrument(skip_all)]
+async fn manage_tray(window_sender: Sender<ShowWindow>) -> Result<()> {
     let menu_events: Receiver<MenuEvent> = {
         let (sender, receiver) = flume::unbounded();
         MenuEvent::set_event_handler(Some(move |event| sender.send(event).unwrap()));
@@ -27,83 +106,20 @@ fn main() {
             &MenuItem::with_id("open", "Open", true, None),
             &MenuItem::with_id("quit", "Quit", true, None)
         ]).unwrap()))
-        .build()
-        .unwrap();
+        .build()?;
 
-    let executor = LocalExecutor::new();
-
-    let (window_sender, window_receiver) = flume::unbounded::<ShowWindow>();
-    let _ = window_sender.send(ShowWindow);
-    let window = executor.spawn(async move {
-
-        window_receiver
-            .stream()
-            .then(|_| async {
-                let window = AsyncGuiWindow::new(Gui::new(|ctx: &egui::Context | {
-                    static REPAINTS: AtomicU64 = AtomicU64::new(0);
-                    egui::SidePanel::left("my_side_panel").show(ctx, |ui| {
-                        ui.heading("Hello World!");
-
-                        if ui.button("Quit").clicked() {
-                            //quit = true;
-                            println!("Click!");
-                        }
-                        //ui.color_edit_button_rgb(&mut clear_color);
-                        ui.collapsing("Spinner", |ui| ui.spinner());
-                    });
-                    egui::CentralPanel::default().show(ctx, |ui| {
-                        ui.centered_and_justified(|ui| {
-                            ui.label(format!("draws: {}", REPAINTS.fetch_add(1, Ordering::Relaxed)));
-                        });
-                    });
-                })).await;
-                while let Either::Right(Ok(ShowWindow)) = select(window.close_requested(), window_receiver.recv_async()).await {
-                    window.focus();
-                }
-            })
-            .take(usize::MAX)
-            .for_each(|_| {
-                println!("Closed")
-            })
-            .await;
-    });
-
-    let tray = executor.spawn(async move {
-        while let Ok(event) = menu_events.recv_async().await {
-            match event.id {
-                id if id == "open" => {
-                    println!("Opening window");
-                    let _ = window_sender.send_async(ShowWindow).await;
-                },
-                id if id == "quit" => {
-                    println!("Quit");
-                    break;
-                }
-                _ => {}
+    while let Ok(event) = menu_events.recv_async().await {
+        match event.id {
+            id if id == "open" => {
+                let _ = window_sender.send_async(ShowWindow).await;
+            },
+            id if id == "quit" => {
+                break;
             }
+            _ => {}
         }
-    });
-
-    framework::block_on(executor.run(async move {
-        window.or(tray).await
-    }));
-
-}
-
-async fn select<F1, F2, L, R>(future1: F1, future2: F2) -> Either<L, R>
-    where
-        F1: Future<Output = L>,
-        F2: Future<Output = R>
-{
-    let future1 = async move {
-        Either::Left(future1.await)
-    };
-
-    let future2 = async move {
-        Either::Right(future2.await)
-    };
-
-    future1.or(future2).await
+    }
+    Ok(())
 }
 
 /*

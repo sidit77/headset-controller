@@ -78,6 +78,7 @@ impl Reactor {
     }
 
     pub fn remove_window(&self, id: usize) {
+        tracing::trace!("Destroying Window {}", id);
         self
             .active_windows
             .borrow_mut()
@@ -134,6 +135,7 @@ impl EventLoopOp {
                     let window = GuiWindow::new(target, gui);
                     let id = reactor.next_window_id.replace(reactor.next_window_id.get() + 1);
                     reactor.active_windows.borrow_mut().insert(id, window);
+                    tracing::trace!("Registered new gui window with id {}", id);
                     let _ = sender.send(id);
                 }
             }
