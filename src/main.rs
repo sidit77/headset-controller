@@ -2,94 +2,109 @@
 
 mod framework;
 
+use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
-use async_io::Timer;
+use async_executor::LocalExecutor;
+use either::Either;
+use flume::{Receiver};
 use futures_lite::{StreamExt, FutureExt};
+use tray_icon::menu::{Menu, MenuEvent, MenuItem};
+use tray_icon::{Icon, TrayIconBuilder};
 use crate::framework::{AsyncGuiWindow, Gui};
 
+struct ShowWindow;
 
 fn main() {
-    framework::block_on(async {
-        let fut1 = async {
-            Timer::interval(Duration::from_secs(1))
-                .take(20)
-                .enumerate()
-                .for_each(|(i, _)| println!("{i}"))
-                .await;
-        };
+    let menu_events: Receiver<MenuEvent> = {
+        let (sender, receiver) = flume::unbounded();
+        MenuEvent::set_event_handler(Some(move |event| sender.send(event).unwrap()));
+        receiver
+    };
 
-        let fut2 = async {
-            Timer::after(Duration::from_millis(500)).await;
-            Timer::interval(Duration::from_secs(1))
-                .take(20)
-                .enumerate()
-                .for_each(|(i, _)| println!("{i}.5"))
-                .await;
-        };
+    let _tray_icon = TrayIconBuilder::new()
+        .with_icon(Icon::from_rgba(vec![255,255,255,255], 1, 1).unwrap())
+        .with_menu(Box::new(Menu::with_items(&[
+            &MenuItem::with_id("open", "Open", true, None),
+            &MenuItem::with_id("quit", "Quit", true, None)
+        ]).unwrap()))
+        .build()
+        .unwrap();
 
-        let fut3 = async {
-            let window = AsyncGuiWindow::new(Gui::new(|ctx: &egui::Context | {
-                static REPAINTS: AtomicU64 = AtomicU64::new(0);
-                egui::SidePanel::left("my_side_panel").show(ctx, |ui| {
-                    ui.heading("Hello World!");
+    let executor = LocalExecutor::new();
 
-                    if ui.button("Quit").clicked() {
-                        //quit = true;
-                        println!("Click!");
-                    }
-                    //ui.color_edit_button_rgb(&mut clear_color);
-                    ui.collapsing("Spinner", |ui| ui.spinner());
-                });
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    ui.centered_and_justified(|ui| {
-                        ui.label(format!("draws: {}", REPAINTS.fetch_add(1, Ordering::Relaxed)));
+    let (window_sender, window_receiver) = flume::unbounded::<ShowWindow>();
+    let _ = window_sender.send(ShowWindow);
+    let window = executor.spawn(async move {
+
+        window_receiver
+            .stream()
+            .then(|_| async {
+                let window = AsyncGuiWindow::new(Gui::new(|ctx: &egui::Context | {
+                    static REPAINTS: AtomicU64 = AtomicU64::new(0);
+                    egui::SidePanel::left("my_side_panel").show(ctx, |ui| {
+                        ui.heading("Hello World!");
+
+                        if ui.button("Quit").clicked() {
+                            //quit = true;
+                            println!("Click!");
+                        }
+                        //ui.color_edit_button_rgb(&mut clear_color);
+                        ui.collapsing("Spinner", |ui| ui.spinner());
                     });
-                });
-            })).await;
-            window.close_requested().await;
-        };
-
-        fut1.or(fut2).or(fut3).await;
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        ui.centered_and_justified(|ui| {
+                            ui.label(format!("draws: {}", REPAINTS.fetch_add(1, Ordering::Relaxed)));
+                        });
+                    });
+                })).await;
+                while let Either::Right(Ok(ShowWindow)) = select(window.close_requested(), window_receiver.recv_async()).await {
+                    window.focus();
+                }
+            })
+            .take(usize::MAX)
+            .for_each(|_| {
+                println!("Closed")
+            })
+            .await;
     });
 
-    /*
-    let mut event_loop = EventLoopBuilder::new()
-        .build();
-
-    let mut gui = DefaultGuiWindow::new(&event_loop, Gui::new(|ctx: &egui::Context | {
-        static REPAINTS: AtomicU64 = AtomicU64::new(0);
-        egui::SidePanel::left("my_side_panel").show(ctx, |ui| {
-            ui.heading("Hello World!");
-
-            if ui.button("Quit").clicked() {
-                //quit = true;
-                println!("Click!");
+    let tray = executor.spawn(async move {
+        while let Ok(event) = menu_events.recv_async().await {
+            match event.id {
+                id if id == "open" => {
+                    println!("Opening window");
+                    let _ = window_sender.send_async(ShowWindow).await;
+                },
+                id if id == "quit" => {
+                    println!("Quit");
+                    break;
+                }
+                _ => {}
             }
-            //ui.color_edit_button_rgb(&mut clear_color);
-            ui.collapsing("Spinner", |ui| ui.spinner());
-        });
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.centered_and_justified(|ui| {
-                ui.label(format!("draws: {}", REPAINTS.fetch_add(1, Ordering::Relaxed)));
-            });
-        });
-    }));
-
-    event_loop.run_return(move |event, _, control_flow| {
-        gui.handle_events(&event);
-        *control_flow = gui
-            .next_repaint()
-            .map(ControlFlow::WaitUntil)
-            .unwrap_or(ControlFlow::Wait);
-        if gui.is_close_requested() {
-            control_flow.set_exit();
         }
     });
-*/
+
+    framework::block_on(executor.run(async move {
+        window.or(tray).await
+    }));
+
 }
 
+async fn select<F1, F2, L, R>(future1: F1, future2: F2) -> Either<L, R>
+    where
+        F1: Future<Output = L>,
+        F2: Future<Output = R>
+{
+    let future1 = async move {
+        Either::Left(future1.await)
+    };
 
+    let future2 = async move {
+        Either::Right(future2.await)
+    };
+
+    future1.or(future2).await
+}
 
 /*
 mod audio;

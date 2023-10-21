@@ -82,7 +82,8 @@ impl Reactor {
             .active_windows
             .borrow_mut()
             .remove(&id)
-            .expect("No such window");
+            .is_none()
+            .then_some(|| tracing::warn!("Window {} does not exist", id));
     }
 
     pub fn with_window<T>(&self, id: usize, func: impl FnOnce(&DefaultGuiWindow) -> T) -> T {

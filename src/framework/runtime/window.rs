@@ -29,6 +29,10 @@ impl AsyncGuiWindow {
         self.reactor.with_window(self.id, |w| w.close_requested())
     }
 
+    pub fn focus(&self) {
+        self.reactor.with_window(self.id, |w| w.focus())
+    }
+
 }
 
 impl Drop for AsyncGuiWindow {

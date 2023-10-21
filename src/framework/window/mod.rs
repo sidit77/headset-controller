@@ -88,6 +88,9 @@ impl<C: GraphicsContext> GuiWindow<C> {
         self.window.request_redraw();
     }
 
+    pub fn focus(&self) {
+        self.window.focus_window();
+    }
     #[instrument(skip_all)]
     pub fn handle_events<T>(&mut self, event: &Event<T>) {
         let id = self.window.id();
