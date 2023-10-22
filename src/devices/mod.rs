@@ -5,18 +5,71 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter, Write};
 use std::future::Future;
 use std::pin::Pin;
+use async_executor::LocalExecutor;
 
 use async_hid::{DeviceInfo, HidError};
 use color_eyre::eyre::Error as EyreError;
+use enum_iterator::{all, Sequence};
 use flume::Sender;
 use futures_lite::stream::StreamExt;
 use tracing::instrument;
 
 use crate::config::{CallAction, DUMMY_DEVICE as DUMMY_DEVICE_ENABLED};
-use crate::devices::arctis_nova_7::{ARCTIS_NOVA_7, ARCTIS_NOVA_7P, ARCTIS_NOVA_7X};
-use crate::devices::dummy::DUMMY_DEVICE;
+use crate::devices::arctis_nova_7::{ArctisNova7, Subtype};
+use crate::devices::dummy::DummyDevice;
+//use crate::devices::arctis_nova_7::{ARCTIS_NOVA_7, ARCTIS_NOVA_7P, ARCTIS_NOVA_7X};
 
-pub const SUPPORTED_DEVICES: &[SupportedDevice] = &[ARCTIS_NOVA_7, ARCTIS_NOVA_7X, ARCTIS_NOVA_7P];
+pub type InterfaceMap = HashMap<Interface, DeviceInfo>;
+pub type UpdateChannel = Sender<DeviceUpdate>;
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Sequence)]
+pub enum SupportedDevice {
+    ArctisNova7,
+    ArctisNova7X,
+    ArctisNova7P,
+    DummyDevice
+}
+impl SupportedDevice {
+    pub const fn name(self) -> &'static str {
+        match self {
+            SupportedDevice::ArctisNova7 => "Steelseries Arctis Nova 7",
+            SupportedDevice::ArctisNova7X => "Steelseries Arctis Nova 7X",
+            SupportedDevice::ArctisNova7P => "Steelseries Arctis Nova 7P",
+            SupportedDevice::DummyDevice => "DummyDevice"
+        }
+    }
+
+    pub const fn required_interfaces(self) -> &'static [Interface] {
+        match self {
+            SupportedDevice::ArctisNova7 => arctis_nova_7::ARCTIS_NOVA_7_INTERFACES,
+            SupportedDevice::ArctisNova7X => arctis_nova_7::ARCTIS_NOVA_7X_INTERFACES,
+            SupportedDevice::ArctisNova7P => arctis_nova_7::ARCTIS_NOVA_7P_INTERFACES,
+            SupportedDevice::DummyDevice => &[]
+        }
+    }
+
+    pub const fn is_real(&self) -> bool {
+        match self {
+            SupportedDevice::DummyDevice => false,
+            _ => true
+        }
+    }
+
+    async fn open(self, executor: &LocalExecutor<'_>, update_channel: UpdateChannel, interfaces: &InterfaceMap) -> DeviceResult<BoxedDevice> {
+        match self {
+            SupportedDevice::ArctisNova7 => Ok(Box::new(ArctisNova7::open(Subtype::Pc, executor, update_channel, interfaces).await?)),
+            SupportedDevice::ArctisNova7X => Ok(Box::new(ArctisNova7::open(Subtype::Xbox, executor, update_channel, interfaces).await?)),
+            SupportedDevice::ArctisNova7P => Ok(Box::new(ArctisNova7::open(Subtype::Playstation, executor, update_channel, interfaces).await?)),
+            SupportedDevice::DummyDevice => Ok(Box::new(DummyDevice))
+        }
+    }
+
+}
+
+impl Display for SupportedDevice {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name())
+    }
+}
 
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u16)]
@@ -74,40 +127,6 @@ impl From<&DeviceInfo> for Interface {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct DeviceStrings {
-    pub name: &'static str,
-    pub manufacturer: &'static str,
-    pub product: &'static str
-}
-
-impl DeviceStrings {
-    pub const fn new(name: &'static str, manufacturer: &'static str, product: &'static str) -> Self {
-        Self { name, manufacturer, product }
-    }
-}
-
-pub type InterfaceMap = HashMap<Interface, DeviceInfo>;
-pub type UpdateChannel = Sender<DeviceUpdate>;
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct SupportedDevice {
-    pub strings: DeviceStrings,
-    required_interfaces: &'static [Interface],
-    open: fn(channel: UpdateChannel, interfaces: &InterfaceMap) -> BoxedDeviceFuture
-}
-
-impl Display for SupportedDevice {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.name())
-    }
-}
-
-impl SupportedDevice {
-    pub const fn name(&self) -> &'static str {
-        self.strings.name
-    }
-}
-
 #[derive(Debug)]
 pub enum DeviceUpdate {
     ConnectionChanged,
@@ -139,16 +158,14 @@ impl DeviceList {
             .collect()
             .await;
 
-        let devices: Vec<SupportedDevice> = SUPPORTED_DEVICES
-            .iter()
-            .chain(DUMMY_DEVICE_ENABLED.then_some(&DUMMY_DEVICE))
+        let devices: Vec<SupportedDevice> = all::<SupportedDevice>()
+            .filter(|dev| dev.is_real() || *DUMMY_DEVICE_ENABLED)
             .filter(|dev| {
-                dev.required_interfaces
+                dev.required_interfaces()
                     .iter()
                     .all(|i| interfaces.contains_key(i))
             })
-            .inspect(|dev| tracing::trace!("Found {}", dev.strings.name))
-            .copied()
+            .inspect(|dev| tracing::trace!("Found {}", dev.name()))
             .collect();
 
         Ok(Self {
@@ -161,25 +178,27 @@ impl DeviceList {
         &self.devices
     }
 
-    pub async fn open(&self, supported: &SupportedDevice, update_channel: UpdateChannel) -> DeviceResult<BoxedDevice> {
-        tracing::trace!("Attempting to open {}", supported.strings.name);
-        let dev = (supported.open)(update_channel, &self.interfaces).await?;
+    pub async fn open(&self, supported: SupportedDevice, executor: &LocalExecutor<'_>, update_channel: UpdateChannel) -> DeviceResult<BoxedDevice> {
+        tracing::trace!("Attempting to open {}", supported.name());
+
+        let dev = supported.open(executor, update_channel, &self.interfaces).await?;
 
         Ok(dev)
     }
 
     #[instrument(skip(self, update_channel))]
-    pub async fn find_preferred_device(&self, preference: &Option<String>, update_channel: UpdateChannel) -> Option<BoxedDevice> {
+    pub async fn find_preferred_device(&self, preference: &Option<String>, executor: &LocalExecutor<'_>, update_channel: UpdateChannel) -> Option<BoxedDevice> {
         let device_iter = preference
             .iter()
             .flat_map(|pref| {
                 self.devices
                     .iter()
-                    .filter(move |dev| dev.strings.name == pref)
+                    .filter(move |dev| dev.name() == pref)
             })
-            .chain(self.devices.iter());
+            .chain(self.devices.iter())
+            .copied();
         for device in device_iter {
-            match self.open(device, update_channel.clone()).await {
+            match self.open(device, executor, update_channel.clone()).await {
                 Ok(dev) => return Some(dev),
                 Err(err) => tracing::error!("Failed to open device: {:?}", err)
             }
@@ -194,10 +213,10 @@ pub fn generate_udev_rules() -> DeviceResult<String> {
     writeln!(rules, r#"ACTION!="add|change", GOTO="headsets_end""#)?;
     writeln!(rules, "")?;
 
-    for device in SUPPORTED_DEVICES {
-        writeln!(rules, "# {}", device.strings.name)?;
+    for device in all::<SupportedDevice>().filter(SupportedDevice::is_real) {
+        writeln!(rules, "# {}", device.name())?;
         let codes: HashSet<_> = device
-            .required_interfaces
+            .required_interfaces()
             .iter()
             .map(|i| (i.vendor_id, i.product_id))
             .collect();
@@ -229,12 +248,12 @@ pub type BoxedDevice = Box<dyn Device + Send>;
 pub type BoxedDeviceFuture<'a> = Pin<Box<dyn Future<Output = DeviceResult<BoxedDevice>> + 'a>>;
 
 pub trait Device {
-    fn strings(&self) -> DeviceStrings;
+    fn name(&self) -> &'static str;
+    fn product_name(&self) -> &'static str;
+    fn manufacturer_name(&self) -> &'static str;
+
     fn is_connected(&self) -> bool;
 
-    fn name(&self) -> &'static str {
-        self.strings().name
-    }
     fn get_battery_status(&self) -> Option<BatteryLevel> {
         None
     }

@@ -1,18 +1,10 @@
 use std::sync::Arc;
-use std::time::Duration;
-
-use async_hid::{AccessMode, Device as HidDevice, HidResult};
+use async_hid::{AccessMode, HidResult};
 use crossbeam_utils::atomic::AtomicCell;
 use static_assertions::const_assert;
-use tokio::spawn;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tokio::task::JoinHandle;
-use tokio::time::timeout;
-use tracing::instrument;
-
-use crate::config::CallAction;
+use async_hid::Device as HidDevice;
+use flume::unbounded;
 use crate::devices::*;
-use crate::util::{AtomicCellExt, SenderExt, VecExt};
 
 const VID_STEELSERIES: u16 = 0x1038;
 
@@ -24,32 +16,45 @@ const USAGE_ID: u16 = 0x1;
 const NOTIFICATION_USAGE_PAGE: u16 = 0xFF00;
 const CONFIGURATION_USAGE_PAGE: u16 = 0xFFC0;
 
-pub const ARCTIS_NOVA_7: SupportedDevice = SupportedDevice {
-    strings: DeviceStrings::new("Steelseries Arctis Nova 7", "Steelseries", "Arctis Nova 7"),
-    required_interfaces: &[
-        Interface::new(NOTIFICATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7),
-        Interface::new(CONFIGURATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7)
-    ],
-    open: ArctisNova7::open_pc
-};
+pub const ARCTIS_NOVA_7_INTERFACES: &[Interface] = &[
+    Interface::new(NOTIFICATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7),
+    Interface::new(CONFIGURATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7)
+];
+pub const ARCTIS_NOVA_7X_INTERFACES: &[Interface] = &[
+    Interface::new(NOTIFICATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7X),
+    Interface::new(CONFIGURATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7X)
+];
+pub const ARCTIS_NOVA_7P_INTERFACES: &[Interface] = &[
+    Interface::new(NOTIFICATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7P),
+    Interface::new(CONFIGURATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7P)
+];
 
-pub const ARCTIS_NOVA_7X: SupportedDevice = SupportedDevice {
-    strings: DeviceStrings::new("Steelseries Arctis Nova 7X", "Steelseries", "Arctis Nova 7X"),
-    required_interfaces: &[
-        Interface::new(NOTIFICATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7X),
-        Interface::new(CONFIGURATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7X)
-    ],
-    open: ArctisNova7::open_xbox
-};
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum Subtype {
+    Pc,
+    Xbox,
+    Playstation
+}
 
-pub const ARCTIS_NOVA_7P: SupportedDevice = SupportedDevice {
-    strings: DeviceStrings::new("Steelseries Arctis Nova 7P", "Steelseries", "Arctis Nova 7P"),
-    required_interfaces: &[
-        Interface::new(NOTIFICATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7P),
-        Interface::new(CONFIGURATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, PID_ARCTIS_NOVA_7P)
-    ],
-    open: ArctisNova7::open_playstation
-};
+impl Subtype {
+    const fn pid(self) -> u16 {
+        match self {
+            Subtype::Pc => PID_ARCTIS_NOVA_7,
+            Subtype::Xbox => PID_ARCTIS_NOVA_7X,
+            Subtype::Playstation => PID_ARCTIS_NOVA_7P,
+        }
+    }
+}
+
+impl From<Subtype> for SupportedDevice {
+    fn from(value: Subtype) -> Self {
+        match value {
+            Subtype::Pc => SupportedDevice::ArctisNova7,
+            Subtype::Xbox => SupportedDevice::ArctisNova7X,
+            Subtype::Playstation => SupportedDevice::ArctisNova7P
+        }
+    }
+}
 
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]
@@ -94,17 +99,18 @@ impl State {
 }
 
 pub struct ArctisNova7 {
-    pub strings: DeviceStrings,
-    update_task: JoinHandle<()>,
-    config_task: JoinHandle<()>,
-    config_channel: UnboundedSender<ConfigAction>,
+    //pub strings: DeviceStrings,
+    //update_task: JoinHandle<()>,
+    //config_task: JoinHandle<()>,
+    subtype: Subtype,
+    config_channel: Sender<ConfigAction>,
     state: Arc<AtomicCell<State>>
 }
 
 impl ArctisNova7 {
-    async fn open(strings: DeviceStrings, pid: u16, update_channel: UpdateChannel, interfaces: &InterfaceMap) -> DeviceResult<BoxedDevice> {
+    pub async fn open(subtype: Subtype, executor: &LocalExecutor<'_>, update_channel: UpdateChannel, interfaces: &InterfaceMap) -> DeviceResult<ArctisNova7> {
         let config_interface = interfaces
-            .get(&Interface::new(CONFIGURATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, pid))
+            .get(&Interface::new(CONFIGURATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, subtype.pid()))
             .expect("Failed to find interface in map")
             .open(AccessMode::ReadWrite)
             .await?;
@@ -113,34 +119,20 @@ impl ArctisNova7 {
 
         //TODO open as read-only
         let notification_interface = interfaces
-            .get(&Interface::new(NOTIFICATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, pid))
+            .get(&Interface::new(NOTIFICATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, subtype.pid()))
             .expect("Failed to find interface in map")
             .open(AccessMode::Read)
             .await?;
 
-        let (config_channel, command_receiver) = unbounded_channel();
-        let config_task = spawn(configuration_handler(config_interface, update_channel.clone(), command_receiver));
-        let update_task = spawn(update_handler(notification_interface, update_channel.clone(), state.clone()));
+        let (config_channel, command_receiver) = unbounded();
+        //let config_task = spawn(configuration_handler(config_interface, update_channel.clone(), command_receiver));
+        //let update_task = spawn(update_handler(notification_interface, update_channel.clone(), state.clone()));
 
-        Ok(Box::new(Self {
-            update_task,
-            config_task,
+        Ok(Self {
+            subtype,
             config_channel,
-            strings,
             state
-        }))
-    }
-
-    pub fn open_xbox(update_channel: UpdateChannel, interfaces: &InterfaceMap) -> BoxedDeviceFuture {
-        Box::pin(Self::open(ARCTIS_NOVA_7X.strings, PID_ARCTIS_NOVA_7X, update_channel, interfaces))
-    }
-
-    pub fn open_playstation(update_channel: UpdateChannel, interfaces: &InterfaceMap) -> BoxedDeviceFuture {
-        Box::pin(Self::open(ARCTIS_NOVA_7P.strings, PID_ARCTIS_NOVA_7P, update_channel, interfaces))
-    }
-
-    pub fn open_pc(update_channel: UpdateChannel, interfaces: &InterfaceMap) -> BoxedDeviceFuture {
-        Box::pin(Self::open(ARCTIS_NOVA_7.strings, PID_ARCTIS_NOVA_7, update_channel, interfaces))
+        })
     }
 
     fn request_config_action(&self, action: ConfigAction) {
@@ -174,6 +166,55 @@ async fn load_state(config_interface: &HidDevice) -> DeviceResult<State> {
 
     Ok(state)
 }
+
+
+
+#[derive(Debug, Copy, Clone)]
+enum StatusUpdate {
+    PowerState(PowerState),
+    Battery(u8),
+    ChatMix(ChatMix)
+}
+
+impl From<StatusUpdate> for DeviceUpdate {
+    fn from(value: StatusUpdate) -> Self {
+        //This mapping is not fully correct but it's good enough
+        match value {
+            StatusUpdate::PowerState(_) => Self::ConnectionChanged,
+            StatusUpdate::Battery(_) => Self::BatteryLevel,
+            StatusUpdate::ChatMix(_) => Self::ChatMixChanged
+        }
+    }
+}
+
+fn parse_status_update(data: &[u8]) -> Option<StatusUpdate> {
+    const POWER_STATE_CHANGED: u8 = 0xbb;
+    const BATTERY_LEVEL_CHANGED: u8 = 0xb7;
+    const CHAT_MIX_CHANGED: u8 = 0x45;
+    match data[0] {
+        CHAT_MIX_CHANGED => Some(StatusUpdate::ChatMix(ChatMix {
+            game: data[1],
+            chat: data[2]
+        })),
+        POWER_STATE_CHANGED => Some(StatusUpdate::PowerState(PowerState::from_u8(data[1]))),
+        BATTERY_LEVEL_CHANGED => Some(StatusUpdate::Battery(normalize_battery_level(data[1]))),
+        _ => None
+    }
+}
+
+fn normalize_battery_level(byte: u8) -> u8 {
+    const BATTERY_MAX: u8 = 0x04;
+    const BATTERY_MIN: u8 = 0x00;
+    let level = byte.clamp(BATTERY_MIN, BATTERY_MAX);
+    (level - BATTERY_MIN) * (100 / (BATTERY_MAX - BATTERY_MIN))
+}
+
+/*
+
+
+
+
+
 
 #[instrument(skip_all)]
 async fn configuration_handler(config_interface: HidDevice, events: UpdateChannel, mut config_requests: UnboundedReceiver<ConfigAction>) {
@@ -244,45 +285,7 @@ async fn update_handler(notification_interface: HidDevice, events: UpdateChannel
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-enum StatusUpdate {
-    PowerState(PowerState),
-    Battery(u8),
-    ChatMix(ChatMix)
-}
 
-impl From<StatusUpdate> for DeviceUpdate {
-    fn from(value: StatusUpdate) -> Self {
-        //This mapping is not fully correct but it's good enough
-        match value {
-            StatusUpdate::PowerState(_) => Self::ConnectionChanged,
-            StatusUpdate::Battery(_) => Self::BatteryLevel,
-            StatusUpdate::ChatMix(_) => Self::ChatMixChanged
-        }
-    }
-}
-
-fn parse_status_update(data: &[u8]) -> Option<StatusUpdate> {
-    const POWER_STATE_CHANGED: u8 = 0xbb;
-    const BATTERY_LEVEL_CHANGED: u8 = 0xb7;
-    const CHAT_MIX_CHANGED: u8 = 0x45;
-    match data[0] {
-        CHAT_MIX_CHANGED => Some(StatusUpdate::ChatMix(ChatMix {
-            game: data[1],
-            chat: data[2]
-        })),
-        POWER_STATE_CHANGED => Some(StatusUpdate::PowerState(PowerState::from_u8(data[1]))),
-        BATTERY_LEVEL_CHANGED => Some(StatusUpdate::Battery(normalize_battery_level(data[1]))),
-        _ => None
-    }
-}
-
-fn normalize_battery_level(byte: u8) -> u8 {
-    const BATTERY_MAX: u8 = 0x04;
-    const BATTERY_MIN: u8 = 0x00;
-    let level = byte.clamp(BATTERY_MIN, BATTERY_MAX);
-    (level - BATTERY_MIN) * (100 / (BATTERY_MAX - BATTERY_MIN))
-}
 
 impl Drop for ArctisNova7 {
     fn drop(&mut self) {
@@ -292,9 +295,24 @@ impl Drop for ArctisNova7 {
     }
 }
 
+
+ */
+
 impl Device for ArctisNova7 {
-    fn strings(&self) -> DeviceStrings {
-        self.strings
+    fn name(&self) -> &'static str {
+        SupportedDevice::from(self.subtype).name()
+    }
+
+    fn product_name(&self) -> &'static str {
+        match self.subtype {
+            Subtype::Pc => "Arctis Nova 7",
+            Subtype::Xbox => "Arctis Nova 7X",
+            Subtype::Playstation => "Arctis Nova 7P",
+        }
+    }
+
+    fn manufacturer_name(&self) -> &'static str {
+        "Steelseries"
     }
 
     fn is_connected(&self) -> bool {

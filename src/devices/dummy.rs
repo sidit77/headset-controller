@@ -1,27 +1,22 @@
-use std::future::ready;
-
 use tracing::instrument;
 
 use crate::config::CallAction;
 use crate::devices::*;
 
-pub const DUMMY_DEVICE: SupportedDevice = SupportedDevice {
-    strings: DeviceStrings::new("DummyDevice", "DummyCorp", "DummyDevice"),
-    required_interfaces: &[],
-    open: create_dummy
-};
-
-fn create_dummy(_: UpdateChannel, _: &InterfaceMap) -> BoxedDeviceFuture {
-    let dummy: BoxedDevice = Box::new(DummyDevice);
-    Box::pin(ready(Ok(dummy)))
-}
-
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct DummyDevice;
 
 impl Device for DummyDevice {
-    fn strings(&self) -> DeviceStrings {
-        DUMMY_DEVICE.strings
+    fn name(&self) -> &'static str {
+        "DummyDevice"
+    }
+
+    fn product_name(&self) -> &'static str {
+        "DummyDevice"
+    }
+
+    fn manufacturer_name(&self) -> &'static str {
+        "DummyCorp"
     }
 
     fn is_connected(&self) -> bool {

@@ -4,6 +4,7 @@ mod framework;
 mod util;
 mod config;
 mod debouncer;
+mod devices;
 
 use color_eyre::Result;
 use std::ops::Not;
@@ -25,6 +26,7 @@ use parking_lot::Mutex;
 use tracing::instrument;
 use crate::config::{CLOSE_IMMEDIATELY, Config, START_QUIET};
 use crate::debouncer::{Action, ActionProxy, ActionSender};
+use crate::devices::{DeviceList, SupportedDevice};
 use crate::framework::{AsyncGuiWindow, Gui};
 use crate::util::{select, WorkerThread};
 
@@ -61,11 +63,20 @@ fn main() -> Result<()> {
     let worker = executor.spawn(WorkerThread::spawn(move || {
         let executor = LocalExecutor::new();
 
-        async_io::block_on(executor.run(async move {
+        async_io::block_on::<Result<()>>(executor.run(async {
+
+            let (update_sender, update_receiver) = flume::unbounded();
+
+            let list = DeviceList::new().await?;
+            let device = list.open(SupportedDevice::ArctisNova7X, &executor, update_sender).await?;
+            println!("{:?}", device.get_battery_status());
+
+
             event_receiver
                 .for_each(|event| println!("Got event: {:?}", event))
                 .await;
-        }));
+            Ok(())
+        }))?;
         tracing::trace!("Shutting down worker thread");
         Ok(())
     }));

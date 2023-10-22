@@ -24,17 +24,20 @@ color-eyre = "0.6"
 directories-next = "2"
 serde = { version = "1", features = ["derive"] }
 ron = "0.8"
+
 once_cell = "1"
 either = "1"
-futures-lite = "1"
-crossbeam-utils = "0.8"
 static_assertions = "1"
+enum-iterator = "1"
+
 fixed-map = "0.9"
-parking_lot = "0.12"
 flume = "0.11"
 event-listener = "3"
 oneshot = "0.1"
+crossbeam-utils = "0.8"
+parking_lot = "0.12"
 
+futures-lite = "1"
 async-io = "2"
 async-executor = "1"
 async-hid = { git = "https://github.com/sidit77/async-hid.git"}
