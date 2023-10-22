@@ -24,16 +24,16 @@ use tray_icon::menu::{Menu, MenuEvent, MenuItem};
 use tray_icon::{Icon, TrayIconBuilder};
 use parking_lot::Mutex;
 use tracing::instrument;
-use crate::config::{CLOSE_IMMEDIATELY, Config, START_QUIET};
+use crate::config::{CLOSE_IMMEDIATELY, Config, PRINT_UDEV_RULES, START_QUIET};
 use crate::debouncer::{Action, ActionProxy, ActionSender};
-use crate::devices::{DeviceList, SupportedDevice};
+use crate::devices::{DeviceList, generate_udev_rules, SupportedDevice};
 use crate::framework::{AsyncGuiWindow, Gui};
 use crate::util::{select, WorkerThread};
 
 struct ShowWindow;
 
 fn main() -> Result<()> {
-    //if *PRINT_UDEV_RULES { return Ok(println!("{}", generate_udev_rules()?)); }
+    if *PRINT_UDEV_RULES { return Ok(println!("{}", generate_udev_rules()?)); }
     color_eyre::install()?;
     //let logfile = Mutex::new(log_file());
     tracing_subscriber::registry()
@@ -68,6 +68,7 @@ fn main() -> Result<()> {
             let (update_sender, update_receiver) = flume::unbounded();
 
             let list = DeviceList::new().await?;
+
             let device = list.open(SupportedDevice::ArctisNova7X, &executor, update_sender).await?;
             println!("{:?}", device.get_battery_status());
 

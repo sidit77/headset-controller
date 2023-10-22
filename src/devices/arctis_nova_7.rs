@@ -1,10 +1,17 @@
 use std::sync::Arc;
+use std::time::Duration;
+use async_executor::Task;
 use async_hid::{AccessMode, HidResult};
 use crossbeam_utils::atomic::AtomicCell;
 use static_assertions::const_assert;
 use async_hid::Device as HidDevice;
-use flume::unbounded;
+use async_io::Timer;
+use either::Either;
+
+use flume::{Receiver, RecvError, unbounded};
+
 use crate::devices::*;
+use crate::util::{AtomicCellExt, select, SenderExt, VecExt};
 
 const VID_STEELSERIES: u16 = 0x1038;
 
@@ -99,9 +106,8 @@ impl State {
 }
 
 pub struct ArctisNova7 {
-    //pub strings: DeviceStrings,
-    //update_task: JoinHandle<()>,
-    //config_task: JoinHandle<()>,
+    _update_task: Task<()>,
+    _config_task: Task<()>,
     subtype: Subtype,
     config_channel: Sender<ConfigAction>,
     state: Arc<AtomicCell<State>>
@@ -117,7 +123,6 @@ impl ArctisNova7 {
 
         let state = Arc::new(AtomicCell::new(load_state(&config_interface).await?));
 
-        //TODO open as read-only
         let notification_interface = interfaces
             .get(&Interface::new(NOTIFICATION_USAGE_PAGE, USAGE_ID, VID_STEELSERIES, subtype.pid()))
             .expect("Failed to find interface in map")
@@ -125,10 +130,12 @@ impl ArctisNova7 {
             .await?;
 
         let (config_channel, command_receiver) = unbounded();
-        //let config_task = spawn(configuration_handler(config_interface, update_channel.clone(), command_receiver));
-        //let update_task = spawn(update_handler(notification_interface, update_channel.clone(), state.clone()));
+        let config_task = executor.spawn(configuration_handler(config_interface, update_channel.clone(), command_receiver));
+        let update_task = executor.spawn(update_handler(notification_interface, update_channel.clone(), state.clone()));
 
         Ok(Self {
+            _update_task: update_task,
+            _config_task: config_task,
             subtype,
             config_channel,
             state
@@ -167,6 +174,74 @@ async fn load_state(config_interface: &HidDevice) -> DeviceResult<State> {
     Ok(state)
 }
 
+#[instrument(skip_all)]
+async fn configuration_handler(config_interface: HidDevice, events: UpdateChannel, config_requests: Receiver<ConfigAction>) {
+    let mut config_interface = MaybeHidDevice::from(config_interface);
+    loop {
+        let timer = config_interface
+            .is_connected()
+            .then_some(Duration::from_secs(20))
+            .map_or_else(Timer::never, Timer::after);
+
+        match select(config_requests.recv_async(), timer).await {
+            Either::Left(Ok(request)) => {
+                tracing::debug!("Attempting apply config request: {:?}", request);
+                let data = match request {
+                    ConfigAction::SetSideTone(level) => vec![0x00, 0x39, level],
+                    ConfigAction::SetMicrophoneVolume(level) => vec![0x00, 0x37, level],
+                    ConfigAction::EnableVolumeLimiter(enabled) => vec![0x00, 0x3a, u8::from(enabled)],
+                    ConfigAction::SetEqualizerLevels(mut levels) => {
+                        levels.prepend([0x00, 0x33]);
+                        levels
+                    }
+                    ConfigAction::SetBluetoothCallAction(action) => {
+                        let v = match action {
+                            CallAction::Nothing => 0x00,
+                            CallAction::ReduceVolume => 0x01,
+                            CallAction::Mute => 0x02
+                        };
+                        vec![0x00, 0xb3, v]
+                    }
+                    ConfigAction::EnableAutoBluetoothActivation(enabled) => vec![0x00, 0xb2, u8::from(enabled)],
+                    ConfigAction::SetMicrophoneLightStrength(level) => vec![0x00, 0xae, level],
+                    ConfigAction::SetInactiveTime(minutes) => vec![0x00, 0xa3, minutes]
+                };
+                match config_interface.connected(AccessMode::Write).await {
+                    Ok(device) => device
+                        .write_output_report(&data)
+                        .await
+                        .unwrap_or_else(|err| events.send_log(DeviceUpdate::DeviceError(err))),
+                    Err(err) => events.send_log(DeviceUpdate::DeviceError(err))
+                }
+            },
+            Either::Left(Err(RecvError::Disconnected)) => break,
+            Either::Right(_) => config_interface.disconnect(),
+        }
+    }
+    tracing::warn!("Request channel close unexpectedly");
+}
+
+#[instrument(skip_all)]
+async fn update_handler(notification_interface: HidDevice, events: UpdateChannel, state: Arc<AtomicCell<State>>) {
+    let mut buf = [0u8; STATUS_BUF_SIZE];
+    loop {
+        match notification_interface.read_input_report(&mut buf).await {
+            Ok(size) => {
+                let buf = &buf[..size];
+                //debug_assert_eq!(size, buf.len());
+                if let Some(update) = parse_status_update(buf) {
+                    state.update(|state| match update {
+                        StatusUpdate::PowerState(ps) => state.power_state = ps,
+                        StatusUpdate::Battery(level) => state.battery = level,
+                        StatusUpdate::ChatMix(mix) => state.chat_mix = mix
+                    });
+                    events.send_log(DeviceUpdate::from(update));
+                }
+            }
+            Err(err) => events.send_log(DeviceUpdate::DeviceError(err))
+        }
+    }
+}
 
 
 #[derive(Debug, Copy, Clone)]
@@ -208,95 +283,6 @@ fn normalize_battery_level(byte: u8) -> u8 {
     let level = byte.clamp(BATTERY_MIN, BATTERY_MAX);
     (level - BATTERY_MIN) * (100 / (BATTERY_MAX - BATTERY_MIN))
 }
-
-/*
-
-
-
-
-
-
-#[instrument(skip_all)]
-async fn configuration_handler(config_interface: HidDevice, events: UpdateChannel, mut config_requests: UnboundedReceiver<ConfigAction>) {
-    let mut config_interface = MaybeHidDevice::from(config_interface);
-
-    loop {
-        let duration = match config_interface.is_connected() {
-            true => Duration::from_secs(20),
-            false => Duration::MAX
-        };
-        match timeout(duration, config_requests.recv()).await {
-            Ok(Some(request)) => {
-                tracing::debug!("Attempting apply config request: {:?}", request);
-                let data = match request {
-                    ConfigAction::SetSideTone(level) => vec![0x00, 0x39, level],
-                    ConfigAction::SetMicrophoneVolume(level) => vec![0x00, 0x37, level],
-                    ConfigAction::EnableVolumeLimiter(enabled) => vec![0x00, 0x3a, u8::from(enabled)],
-                    ConfigAction::SetEqualizerLevels(mut levels) => {
-                        levels.prepend([0x00, 0x33]);
-                        levels
-                    }
-                    ConfigAction::SetBluetoothCallAction(action) => {
-                        let v = match action {
-                            CallAction::Nothing => 0x00,
-                            CallAction::ReduceVolume => 0x01,
-                            CallAction::Mute => 0x02
-                        };
-                        vec![0x00, 0xb3, v]
-                    }
-                    ConfigAction::EnableAutoBluetoothActivation(enabled) => vec![0x00, 0xb2, u8::from(enabled)],
-                    ConfigAction::SetMicrophoneLightStrength(level) => vec![0x00, 0xae, level],
-                    ConfigAction::SetInactiveTime(minutes) => vec![0x00, 0xa3, minutes]
-                };
-                match config_interface.connected(AccessMode::Write).await {
-                    Ok(device) => device
-                        .write_output_report(&data)
-                        .await
-                        .unwrap_or_else(|err| events.send_log(DeviceUpdate::DeviceError(err))),
-                    Err(err) => events.send_log(DeviceUpdate::DeviceError(err))
-                }
-            }
-            Ok(None) => break,
-            Err(_) => config_interface.disconnect()
-        }
-    }
-    tracing::warn!("Request channel close unexpectedly");
-}
-
-#[instrument(skip_all)]
-async fn update_handler(notification_interface: HidDevice, events: UpdateChannel, state: Arc<AtomicCell<State>>) {
-    let mut buf = [0u8; STATUS_BUF_SIZE];
-    loop {
-        match notification_interface.read_input_report(&mut buf).await {
-            Ok(size) => {
-                let buf = &buf[..size];
-                //debug_assert_eq!(size, buf.len());
-                if let Some(update) = parse_status_update(buf) {
-                    state.update(|state| match update {
-                        StatusUpdate::PowerState(ps) => state.power_state = ps,
-                        StatusUpdate::Battery(level) => state.battery = level,
-                        StatusUpdate::ChatMix(mix) => state.chat_mix = mix
-                    });
-                    events.send_log(DeviceUpdate::from(update));
-                }
-            }
-            Err(err) => events.send_log(DeviceUpdate::DeviceError(err))
-        }
-    }
-}
-
-
-
-impl Drop for ArctisNova7 {
-    fn drop(&mut self) {
-        tracing::trace!("Stopping background tasks for {}", self.name());
-        self.update_task.abort();
-        self.config_task.abort();
-    }
-}
-
-
- */
 
 impl Device for ArctisNova7 {
     fn name(&self) -> &'static str {
