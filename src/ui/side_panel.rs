@@ -1,5 +1,4 @@
 use egui::*;
-use parking_lot::Mutex;
 use tracing::instrument;
 
 use crate::config::{Config, Profile};
@@ -7,26 +6,26 @@ use crate::debouncer::{Action, ActionProxy, ActionSender};
 use crate::devices::{Device, DeviceList};
 
 #[instrument(skip_all)]
-pub fn side_panel(ui: &mut Ui, sender: &mut ActionProxy, config: &mut Config, device: &dyn Device, device_list: &Mutex<DeviceList>) {
+pub fn side_panel(ui: &mut Ui, sender: &mut ActionProxy, config: &mut Config, device: &dyn Device, device_list: &DeviceList) {
     ui.style_mut()
         .text_styles
         .get_mut(&TextStyle::Body)
         .unwrap()
         .size = 14.0;
     ui.label(
-        RichText::from(device.strings().manufacturer)
+        RichText::from(device.manufacturer_name())
             .heading()
             .size(30.0)
     )
     .union(
         ui.label(
-            RichText::from(device.strings().product)
+            RichText::from(device.product_name())
                 .heading()
                 .size(20.0)
         )
     )
     .context_menu(|ui| {
-        for device in device_list.lock().supported_devices() {
+        for device in device_list.supported_devices() {
             let resp = ui
                 .with_layout(Layout::default().with_cross_justify(true), |ui| {
                     let active = config
@@ -40,6 +39,7 @@ pub fn side_panel(ui: &mut Ui, sender: &mut ActionProxy, config: &mut Config, de
                 ui.close_menu();
                 config.preferred_device = Some(device.name().to_string());
                 sender.submit_all([Action::SaveConfig, Action::SwitchDevice]);
+                sender.submit_full_change();
             }
         }
         ui.separator();

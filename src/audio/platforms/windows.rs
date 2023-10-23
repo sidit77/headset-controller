@@ -9,7 +9,7 @@ use color_eyre::Result;
 use com_policy_config::{IPolicyConfig, PolicyConfigClient};
 use widestring::U16CString;
 use windows::core::{implement, Interface, GUID, HRESULT, PCWSTR, PWSTR};
-use windows::w;
+use windows::core::w;
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Foundation::*;
 use windows::Win32::Media::Audio::Endpoints::*;

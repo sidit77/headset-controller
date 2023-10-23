@@ -13,6 +13,7 @@ use winit::event_loop::EventLoopWindowTarget;
 use winit::window::{Window, WindowBuilder};
 
 use graphics::{GraphicsContext, GuiPainter, WindowBuilderExt, D3D11Context};
+use crate::framework::WINDOW_ICON;
 
 pub type DefaultGuiWindow = GuiWindow<D3D11Context>;
 
@@ -46,7 +47,7 @@ impl<C: GraphicsContext> GuiWindow<C> {
         let (window, graphics) = WindowBuilder::new()
             .with_resizable(true)
             .with_inner_size(LogicalSize { width: 800.0, height: 600.0 })
-            //.with_window_icon(Some(crate::ui::WINDOW_ICON.clone()))
+            .with_window_icon(Some(WINDOW_ICON.clone()))
             .with_title("Headset Controller")
             .build_context::<T, C>(event_loop);
 

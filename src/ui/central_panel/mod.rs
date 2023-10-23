@@ -4,7 +4,6 @@ mod profile;
 use egui::*;
 use tracing::instrument;
 
-use crate::audio::AudioSystem;
 use crate::config::Config;
 use crate::debouncer::{Action, ActionProxy, ActionSender};
 use crate::devices::Device;
@@ -12,7 +11,7 @@ use crate::ui::central_panel::headset::headset_section;
 use crate::ui::central_panel::profile::profile_section;
 
 #[instrument(skip_all)]
-pub fn central_panel(ui: &mut Ui, sender: &mut ActionProxy, config: &mut Config, device: &dyn Device, audio_system: &mut AudioSystem) {
+pub fn central_panel(ui: &mut Ui, sender: &mut ActionProxy, config: &mut Config, device: &dyn Device) {
     ui.style_mut()
         .text_styles
         .get_mut(&TextStyle::Heading)
@@ -39,7 +38,7 @@ pub fn central_panel(ui: &mut Ui, sender: &mut ActionProxy, config: &mut Config,
         ui.add_space(10.0);
         ui.heading("Headset");
         ui.add_space(7.0);
-        headset_section(ui, sender, auto_update, headset, device, audio_system);
+        headset_section(ui, sender, auto_update, headset, device);
         ui.add_space(10.0);
         ui.separator();
         ui.add_space(10.0);

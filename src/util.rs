@@ -88,6 +88,7 @@ impl<T> Drop for WorkerThread<T> {
     }
 }
 
+
 /*
 pub struct EscapeStripper<T> {
     inner: T,

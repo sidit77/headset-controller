@@ -1,15 +1,14 @@
 use egui::*;
 use tracing::instrument;
 
-use crate::audio::{AudioDevice, AudioSystem};
 use crate::config::{CallAction, HeadsetConfig, OsAudio};
-use crate::debouncer::{Action, ActionProxy, ActionSender};
+use crate::debouncer::{Action, ActionProxy};
 use crate::devices::Device;
 use crate::ui::ResponseExt;
 
 #[instrument(skip_all)]
 pub fn headset_section(
-    ui: &mut Ui, sender: &mut ActionProxy, auto_update: bool, headset: &mut HeadsetConfig, device: &dyn Device, audio_system: &mut AudioSystem
+    ui: &mut Ui, sender: &mut ActionProxy, auto_update: bool, headset: &mut HeadsetConfig, device: &dyn Device
 ) {
     if device.get_inactive_time().is_some() {
         ui.horizontal(|ui| {
@@ -52,17 +51,17 @@ pub fn headset_section(
         ui.add_space(10.0);
     }
 
-    if audio_system.is_running() {
-        let switch = &mut headset.os_audio;
-        if audio_output_switch_selector(ui, switch, audio_system) {
-            sender.submit(Action::SaveConfig);
-            if auto_update {
-                sender.submit(Action::UpdateSystemAudio);
-                sender.force(Action::UpdateSystemAudio);
-            }
-        }
-        ui.add_space(10.0);
-    }
+    //if audio_system.is_running() {
+    //    let switch = &mut headset.os_audio;
+    //    if audio_output_switch_selector(ui, switch, audio_system) {
+    //        sender.submit(Action::SaveConfig);
+    //        if auto_update {
+    //            sender.submit(Action::UpdateSystemAudio);
+    //            sender.force(Action::UpdateSystemAudio);
+    //        }
+    //    }
+    //    ui.add_space(10.0);
+    //}
 }
 
 fn get_name(switch: &OsAudio) -> &str {
@@ -73,7 +72,8 @@ fn get_name(switch: &OsAudio) -> &str {
     }
 }
 
-fn audio_output_switch_selector(ui: &mut Ui, switch: &mut OsAudio, audio_system: &mut AudioSystem) -> bool {
+/*
+fn audio_output_switch_selector(ui: &mut Ui, switch: &mut OsAudio) -> bool {
     let mut dirty = false;
     let resp = ComboBox::from_label("Audio Action")
         .selected_text(get_name(switch))
@@ -133,3 +133,4 @@ fn audio_device_selector(ui: &mut Ui, label: &str, selected: &mut String, audio_
         });
     changed
 }
+*/

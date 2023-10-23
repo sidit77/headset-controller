@@ -3,8 +3,6 @@ mod dummy;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter, Write};
-use std::future::Future;
-use std::pin::Pin;
 use async_executor::LocalExecutor;
 
 use async_hid::{DeviceInfo, HidError};
@@ -245,7 +243,6 @@ enum ConfigAction {
 
 pub type DeviceResult<T> = Result<T, EyreError>;
 pub type BoxedDevice = Box<dyn Device + Send>;
-pub type BoxedDeviceFuture<'a> = Pin<Box<dyn Future<Output = DeviceResult<BoxedDevice>> + 'a>>;
 
 pub trait Device {
     fn name(&self) -> &'static str;
