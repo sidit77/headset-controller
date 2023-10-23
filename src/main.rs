@@ -6,10 +6,12 @@ mod config;
 mod debouncer;
 mod devices;
 mod ui;
+mod notification;
 
 use color_eyre::Result;
 use std::ops::{DerefMut, Not};
 use std::sync::Arc;
+use std::time::Duration;
 use async_executor::LocalExecutor;
 use either::Either;
 use flume::{Receiver, Sender};
@@ -26,7 +28,7 @@ use parking_lot::Mutex;
 use tracing::instrument;
 use crate::config::{CLOSE_IMMEDIATELY, Config, EqualizerConfig, HeadsetConfig, PRINT_UDEV_RULES, START_QUIET};
 use crate::debouncer::{Action, ActionProxy, ActionReceiver, ActionSender};
-use crate::devices::{BoxedDevice, Device, DeviceList, generate_udev_rules};
+use crate::devices::{BatteryLevel, BoxedDevice, Device, DeviceList, generate_udev_rules};
 use crate::framework::{AsyncGuiWindow, Gui};
 use crate::util::{select, WorkerThread};
 
@@ -120,10 +122,9 @@ async fn worker_thread(shared_state: Arc<Mutex<SharedState>>, mut event_receiver
                         let current_connection = device.is_connected();
                         let current_battery = device.get_battery_status();
                         if current_connection != last_connected {
-                            //TODO reenable
-                            //let msg = build_notification_text(current_connection, &[current_battery, last_battery]);
-                            //notification::notify(device.name(), &msg, Duration::from_secs(2))
-                            //    .unwrap_or_else(|err| tracing::warn!("Can not create notification: {:?}", err));
+                            let msg = build_notification_text(current_connection, &[current_battery, last_battery]);
+                            notification::notify(device.name(), &msg, Duration::from_secs(2))
+                                .unwrap_or_else(|err| tracing::warn!("Can not create notification: {:?}", err));
                             event_receiver.submit_all([Action::UpdateSystemAudio, Action::UpdateTrayTooltip]);
                             event_receiver.force(Action::UpdateSystemAudio);
                             last_connected = current_connection;
@@ -332,6 +333,21 @@ fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut Hea
     }
 }
 
+fn build_notification_text(connected: bool, battery_levels: &[Option<BatteryLevel>]) -> String {
+    let msg = match connected {
+        true => "Connected",
+        false => "Disconnected"
+    };
+    battery_levels
+        .iter()
+        .filter_map(|b| match b {
+            Some(BatteryLevel::Level(l)) => Some(*l),
+            _ => None
+        })
+        .min()
+        .map(|level| format!("{} (Battery: {}%)", msg, level))
+        .unwrap_or_else(|| msg.to_string())
+}
 
 /*
 
@@ -509,19 +525,5 @@ pub fn update_tray_tooltip(tray: &mut AppTray, device: &Option<BoxedDevice>) {
     tracing::trace!("Updated tooltip");
 }
 
-fn build_notification_text(connected: bool, battery_levels: &[Option<BatteryLevel>]) -> String {
-    let msg = match connected {
-        true => "Connected",
-        false => "Disconnected"
-    };
-    battery_levels
-        .iter()
-        .filter_map(|b| match b {
-            Some(BatteryLevel::Level(l)) => Some(*l),
-            _ => None
-        })
-        .min()
-        .map(|level| format!("{} (Battery: {}%)", msg, level))
-        .unwrap_or_else(|| msg.to_string())
-}
+
 */
