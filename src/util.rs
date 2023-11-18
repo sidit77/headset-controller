@@ -1,3 +1,4 @@
+use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -88,6 +89,15 @@ impl<T> Drop for WorkerThread<T> {
     }
 }
 
+pub struct DebugIter<T>(pub T);
+
+impl<T: Debug, I: Iterator<Item=T> + Clone> Debug for DebugIter<I> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_list()
+            .entries(self.0.clone())
+            .finish()
+    }
+}
 
 /*
 pub struct EscapeStripper<T> {

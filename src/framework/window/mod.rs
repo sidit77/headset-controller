@@ -41,12 +41,13 @@ pub struct GuiWindow {
 
 impl GuiWindow {
     pub fn new<T>(event_loop: &EventLoopWindowTarget<T>, gui: Gui) -> Self {
+
         let (window, graphics) = WindowBuilder::new()
             .with_resizable(true)
             .with_inner_size(LogicalSize { width: 800.0, height: 600.0 })
             .with_window_icon(Some(WINDOW_ICON.clone()))
             .with_title("Headset Controller")
-            .build_dynamic_context(GraphicsBackend::DirectX, event_loop);
+            .build_dynamic_context(GraphicsBackend::default(), event_loop);
 
         let ctx = Context::default();
         ctx.set_visuals(Visuals::light());
