@@ -12,10 +12,11 @@ use winit::event::Event;
 use winit::event_loop::EventLoopWindowTarget;
 use winit::window::{Window, WindowBuilder};
 
-use graphics::{GraphicsContext, GuiPainter, WindowBuilderExt, D3D11Context};
+use graphics::{GraphicsContext, GuiPainter, WindowBuilderExt};
+use crate::framework::window::graphics::OpenGLContext;
 use crate::framework::WINDOW_ICON;
 
-pub type DefaultGuiWindow = GuiWindow<D3D11Context>;
+pub type DefaultGuiWindow = GuiWindow<OpenGLContext>;
 
 pub struct Gui(Box<dyn FnMut(&Context)>);
 impl Gui {
@@ -34,7 +35,6 @@ pub struct GuiWindow<C: GraphicsContext> {
     gui: Gui,
     window: Window,
     graphics: C,
-    painter: C::Painter,
     ctx: Context,
     state: State,
     next_repaint: Option<Instant>,
@@ -51,8 +51,6 @@ impl<C: GraphicsContext> GuiWindow<C> {
             .with_title("Headset Controller")
             .build_context::<T, C>(event_loop);
 
-        let painter = graphics.make_painter();
-
         let ctx = Context::default();
         ctx.set_visuals(Visuals::light());
 
@@ -62,7 +60,6 @@ impl<C: GraphicsContext> GuiWindow<C> {
             gui,
             window,
             graphics,
-            painter,
             ctx,
             state,
             next_repaint: Some(Instant::now()),
@@ -156,18 +153,17 @@ impl<C: GraphicsContext> GuiWindow<C> {
         self.next_repaint = Instant::now().checked_add(repaint_after);
         {
             self.graphics.clear();
-
+            let painter = self.graphics.painter();
             for (id, image_delta) in textures_delta.set {
-                self.painter.set_texture(id, &image_delta);
+                painter.set_texture(id, &image_delta);
             }
 
             let clipped_primitives = self.ctx.tessellate(shapes);
             let dimensions: [u32; 2] = self.window.inner_size().into();
-            self.painter
-                .paint_primitives(dimensions, self.ctx.pixels_per_point(), &clipped_primitives);
+            painter.paint_primitives(dimensions, self.ctx.pixels_per_point(), &clipped_primitives);
 
             for id in textures_delta.free.drain(..) {
-                self.painter.free_texture(id);
+                painter.free_texture(id);
             }
 
             self.graphics.swap_buffers();
@@ -176,9 +172,9 @@ impl<C: GraphicsContext> GuiWindow<C> {
 
 }
 
-impl<C: GraphicsContext> Drop for GuiWindow<C> {
-    #[instrument(skip_all)]
-    fn drop(&mut self) {
-        self.painter.destroy();
-    }
-}
+//impl<C: GraphicsContext> Drop for GuiWindow<C> {
+//    #[instrument(skip_all)]
+//    fn drop(&mut self) {
+//        self.painter.destroy();
+//    }
+//}
