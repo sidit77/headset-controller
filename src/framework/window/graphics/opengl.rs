@@ -16,7 +16,7 @@ use tracing::instrument;
 use winit::dpi::PhysicalSize;
 use winit::event_loop::EventLoopWindowTarget;
 use winit::window::{Window, WindowBuilder};
-use crate::framework::window::graphics::{GraphicsContext, GuiPainter};
+use crate::framework::window::graphics::{GraphicsContext, GraphicsContextBuilder};
 
 static COUNTER: AtomicU32 = AtomicU32::new(0);
 thread_local! { static CURRENT_CONTEXT: Cell<u32> = Cell::new(0) }
@@ -30,8 +30,8 @@ pub struct OpenGLContext {
     painter: Painter
 }
 
-impl GraphicsContext for OpenGLContext {
-    type Painter = Painter;
+impl GraphicsContextBuilder for OpenGLContext {
+    type Context = Self;
 
     #[instrument(skip_all)]
     fn initialize<T>(window_builder: WindowBuilder, event_loop: &EventLoopWindowTarget<T>) -> (Window, Self) {
@@ -124,10 +124,9 @@ impl GraphicsContext for OpenGLContext {
             painter,
         })
     }
+}
 
-    fn painter(&mut self) -> &mut Self::Painter {
-        &mut self.painter
-    }
+impl GraphicsContext for OpenGLContext {
 
     #[instrument(skip(self))]
     fn resize(&self, physical_size: PhysicalSize<u32>) {
@@ -159,6 +158,21 @@ impl GraphicsContext for OpenGLContext {
             .swap_buffers(&self.context)
             .expect("Failed to swap buffers")
     }
+
+    #[inline]
+    fn paint_primitives(&mut self, screen_size_px: [u32; 2], pixels_per_point: f32, clipped_primitives: &[ClippedPrimitive]) {
+        self.painter.paint_primitives(screen_size_px, pixels_per_point, clipped_primitives)
+    }
+
+    #[inline]
+    fn set_texture(&mut self, tex_id: TextureId, delta: &ImageDelta) {
+        self.painter.set_texture(tex_id, delta)
+    }
+
+    #[inline]
+    fn free_texture(&mut self, tex_id: TextureId) {
+        self.painter.free_texture(tex_id)
+    }
 }
 
 impl OpenGLContext {
@@ -178,22 +192,4 @@ impl Drop for OpenGLContext {
         self.ensure_context_current();
         self.painter.destroy();
     }
-}
-
-impl GuiPainter for Painter {
-    #[inline]
-    fn paint_primitives(&mut self, screen_size_px: [u32; 2], pixels_per_point: f32, clipped_primitives: &[ClippedPrimitive]) {
-        self.paint_primitives(screen_size_px, pixels_per_point, clipped_primitives)
-    }
-
-    #[inline]
-    fn set_texture(&mut self, tex_id: TextureId, delta: &ImageDelta) {
-        self.set_texture(tex_id, delta)
-    }
-
-    #[inline]
-    fn free_texture(&mut self, tex_id: TextureId) {
-        self.free_texture(tex_id)
-    }
-
 }

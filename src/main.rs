@@ -239,6 +239,9 @@ async fn manage_window(shared_state: Arc<Mutex<SharedState>>, receiver: Receiver
 
 #[instrument(skip_all)]
 async fn manage_tray(window_sender: Sender<ShowWindow>) -> Result<()> {
+    let window = AsyncGuiWindow::new(Gui::new(|ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| ui.button("Tests"));
+    })).await;
     let menu_events: Receiver<MenuEvent> = {
         let (sender, receiver) = flume::unbounded();
         MenuEvent::set_event_handler(Some(move |event| sender.send(event).unwrap()));

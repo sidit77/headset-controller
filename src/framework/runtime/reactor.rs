@@ -8,13 +8,13 @@ use oneshot::Sender;
 use winit::event::Event;
 use winit::event_loop::EventLoopWindowTarget;
 use crate::framework::runtime::{EventLoopWaker, Wakeup};
-use crate::framework::window::{DefaultGuiWindow, Gui, GuiWindow};
+use crate::framework::window::{Gui, GuiWindow};
 
 pub struct Reactor {
     waker: Arc<EventLoopWaker>,
 
     next_window_id: Cell<usize>,
-    active_windows: RefCell<BTreeMap<usize, DefaultGuiWindow>>,
+    active_windows: RefCell<BTreeMap<usize, GuiWindow>>,
 
     event_loop_ops: RefCell<VecDeque<EventLoopOp>>
 }
@@ -87,7 +87,7 @@ impl Reactor {
             .then_some(|| tracing::warn!("Window {} does not exist", id));
     }
 
-    pub fn with_window<T>(&self, id: usize, func: impl FnOnce(&DefaultGuiWindow) -> T) -> T {
+    pub fn with_window<T>(&self, id: usize, func: impl FnOnce(&GuiWindow) -> T) -> T {
         self
             .active_windows
             .borrow()
