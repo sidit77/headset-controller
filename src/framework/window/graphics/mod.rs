@@ -1,5 +1,5 @@
 mod opengl;
-//mod d3d11;
+mod d3d11;
 
 use egui::{ClippedPrimitive, TextureId};
 use egui::epaint::ImageDelta;
@@ -8,11 +8,12 @@ use winit::event_loop::EventLoopWindowTarget;
 use winit::window::{Window, WindowBuilder};
 
 pub use opengl::OpenGLContext;
-//pub use d3d11::D3D11Context;
+pub use d3d11::D3D11Context;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum GraphicsBackend {
-    OpenGL
+    OpenGL,
+    DirectX
 }
 
 pub trait GraphicsContextBuilder {
@@ -39,7 +40,8 @@ pub trait WindowBuilderExt {
 
     fn build_dynamic_context<T>(self, backend: GraphicsBackend, event_loop: &EventLoopWindowTarget<T>) -> (Window, Box<dyn GraphicsContext>) where Self: Sized {
         match backend {
-            GraphicsBackend::OpenGL => make_dynamic(self.build_context::<T, OpenGLContext>(event_loop))
+            GraphicsBackend::OpenGL => make_dynamic(self.build_context::<T, OpenGLContext>(event_loop)),
+            GraphicsBackend::DirectX => make_dynamic(self.build_context::<T, D3D11Context>(event_loop))
         }
     }
 }

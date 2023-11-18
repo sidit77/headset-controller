@@ -12,13 +12,14 @@ use winit::dpi::PhysicalSize;
 use winit::event_loop::EventLoopWindowTarget;
 use winit::platform::windows::WindowExtWindows;
 use winit::window::{Window, WindowBuilder};
-use crate::framework::window::graphics::{GraphicsContext, GuiPainter};
+use crate::framework::window::graphics::{GraphicsContext, GraphicsContextBuilder};
 
 pub struct D3D11Context {
     device: Device,
     context: DeviceContext,
     swap_chain: IDXGISwapChain1,
-    render_target: Cell<Option<ID3D11RenderTargetView>>
+    render_target: Cell<Option<ID3D11RenderTargetView>>,
+    painter: Painter
 }
 
 impl D3D11Context {
@@ -40,11 +41,11 @@ impl D3D11Context {
     }
 }
 
-impl GraphicsContext for D3D11Context {
-    type Painter = Painter;
+impl GraphicsContextBuilder for D3D11Context {
+    type Context = Self;
 
     #[instrument(skip_all)]
-    fn initialize<T>(window_builder: WindowBuilder, event_loop: &EventLoopWindowTarget<T>) -> (Window, Self) {
+    fn initialize<T>(window_builder: WindowBuilder, event_loop: &EventLoopWindowTarget<T>) -> (Window, Self::Context) {
         let window = window_builder
             .build(event_loop)
             .expect("Failed to create window");
@@ -96,18 +97,19 @@ impl GraphicsContext for D3D11Context {
                 .unwrap_or_else(|err| tracing::warn!("Failed to set swapchain color: {}", err));
         }
 
+        let painter = Painter::new(device.clone(), context.clone());
+
         (window, Self {
             device,
             context,
             swap_chain,
-            render_target: Cell::new(None)
+            render_target: Cell::new(None),
+            painter,
         })
     }
+}
 
-    #[instrument(skip_all)]
-    fn make_painter(&self) -> Painter {
-        Painter::new(self.device.clone(), self.context.clone())
-    }
+impl GraphicsContext for D3D11Context {
 
     #[instrument(skip(self))]
     fn resize(&self, size: PhysicalSize<u32>) {
@@ -138,27 +140,17 @@ impl GraphicsContext for D3D11Context {
                 .expect("Could not present swapchain");
         }
     }
-}
 
-impl GuiPainter for Painter {
-    #[inline]
     fn paint_primitives(&mut self, screen_size_px: [u32; 2], pixels_per_point: f32, clipped_primitives: &[ClippedPrimitive]) {
-        self.paint_primitives(screen_size_px, pixels_per_point, clipped_primitives)
+        self.painter.paint_primitives(screen_size_px, pixels_per_point, clipped_primitives)
     }
 
-    #[inline]
     fn set_texture(&mut self, tex_id: TextureId, delta: &ImageDelta) {
-        self.set_texture(tex_id, delta)
+        self.painter.set_texture(tex_id, delta)
     }
 
-    #[inline]
     fn free_texture(&mut self, tex_id: TextureId) {
-        self.free_texture(tex_id)
-    }
-
-    #[inline]
-    fn destroy(&mut self) {
-        self.destroy()
+        self.painter.free_texture(tex_id)
     }
 }
 
