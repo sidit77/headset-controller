@@ -14,13 +14,18 @@ use crate::ui::side_panel::side_panel;
 
 #[instrument(skip_all)]
 pub fn config_ui(
-    ctx: &Context, sender: &mut ActionProxy, config: &mut Config, device: &dyn Device, device_list: &DeviceList
+    ctx: &Context,
+    sender: &mut ActionProxy,
+    config: &mut Config,
+    device: &dyn Device,
+    device_list: &DeviceList,
+    audio_devices: &[String]
 ) {
     SidePanel::new(Side::Left, "Profiles")
         .resizable(true)
         .width_range(175.0..=400.0)
         .show(ctx, |ui| side_panel(ui, sender, config, device, device_list));
-    CentralPanel::default().show(ctx, |ui| central_panel(ui, sender, config, device));
+    CentralPanel::default().show(ctx, |ui| central_panel(ui, sender, config, device, audio_devices));
 }
 
 #[instrument(skip_all)]

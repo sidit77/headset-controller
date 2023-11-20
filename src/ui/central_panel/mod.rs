@@ -11,7 +11,7 @@ use crate::ui::central_panel::headset::headset_section;
 use crate::ui::central_panel::profile::profile_section;
 
 #[instrument(skip_all)]
-pub fn central_panel(ui: &mut Ui, sender: &mut ActionProxy, config: &mut Config, device: &dyn Device) {
+pub fn central_panel(ui: &mut Ui, sender: &mut ActionProxy, config: &mut Config, device: &dyn Device, audio_devices: &[String]) {
     ui.style_mut()
         .text_styles
         .get_mut(&TextStyle::Heading)
@@ -38,7 +38,7 @@ pub fn central_panel(ui: &mut Ui, sender: &mut ActionProxy, config: &mut Config,
         ui.add_space(10.0);
         ui.heading("Headset");
         ui.add_space(7.0);
-        headset_section(ui, sender, auto_update, headset, device);
+        headset_section(ui, sender, auto_update, headset, device, audio_devices);
         ui.add_space(10.0);
         ui.separator();
         ui.add_space(10.0);

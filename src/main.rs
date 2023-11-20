@@ -45,7 +45,8 @@ pub enum TrayUpdate {
 pub struct SharedState {
     pub config: Config,
     pub device: Option<BoxedDevice>,
-    pub device_list: DeviceList
+    pub device_list: DeviceList,
+    pub audio_devices: Vec<String>
 }
 
 impl SharedState {
@@ -78,7 +79,8 @@ fn main() -> Result<()> {
     let shared_state = Arc::new(Mutex::new(SharedState {
         config: Config::load()?,
         device: None,
-        device_list: DeviceList::empty()
+        device_list: DeviceList::empty(),
+        audio_devices: vec!["Headset".to_string(), "Speaker".to_string()]
     }));
 
     span.exit();
@@ -128,7 +130,14 @@ async fn worker_thread(shared_state: Arc<Mutex<SharedState>>, mut event_receiver
         //}
     });
 
-    event_receiver.submit_all([Action::UpdateSystemAudio, Action::UpdateTrayTooltip, Action::UpdateTray, Action::RefreshDeviceList, Action::SwitchDevice]);
+    event_receiver.submit_all([
+        Action::RefreshAudioDevices,
+        Action::UpdateSystemAudio,
+        Action::UpdateTrayTooltip,
+        Action::UpdateTray,
+        Action::RefreshDeviceList,
+        Action::SwitchDevice
+    ]);
     executor.run(async {
         let mut last_connected = false;
         let mut last_battery = Default::default();
@@ -249,7 +258,8 @@ async fn manage_window(shared_state: Arc<Mutex<SharedState>>, receiver: Receiver
                         &mut event_sender,
                         &mut state.config,
                         device.as_ref(),
-                        &state.device_list
+                        &state.device_list,
+                        &state.audio_devices
                     ),
                     None => ui::no_device_ui(ctx, &mut event_sender)
                 }

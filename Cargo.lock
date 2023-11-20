@@ -1303,6 +1303,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f93e7192158dbcda357bdec5fb5788eebf8bbac027f3f33e719d29135ae84156"
 
 [[package]]
+name = "hc-system-audio"
+version = "0.1.0"
+dependencies = [
+ "tracing",
+]
+
+[[package]]
 name = "headset-controller"
 version = "0.1.0"
 dependencies = [
@@ -1328,6 +1335,7 @@ dependencies = [
  "glow",
  "glutin",
  "glutin-winit",
+ "hc-system-audio",
  "ico",
  "notify-rust",
  "once_cell",

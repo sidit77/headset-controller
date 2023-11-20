@@ -2,13 +2,18 @@ use egui::*;
 use tracing::instrument;
 
 use crate::config::{CallAction, HeadsetConfig, OsAudio};
-use crate::debouncer::{Action, ActionProxy};
+use crate::debouncer::{Action, ActionProxy, ActionSender};
 use crate::devices::Device;
 use crate::ui::ResponseExt;
 
 #[instrument(skip_all)]
 pub fn headset_section(
-    ui: &mut Ui, sender: &mut ActionProxy, auto_update: bool, headset: &mut HeadsetConfig, device: &dyn Device
+    ui: &mut Ui,
+    sender: &mut ActionProxy,
+    auto_update: bool,
+    headset: &mut HeadsetConfig,
+    device: &dyn Device,
+    audio_devices: &[String]
 ) {
     if device.get_inactive_time().is_some() {
         ui.horizontal(|ui| {
@@ -51,17 +56,17 @@ pub fn headset_section(
         ui.add_space(10.0);
     }
 
-    //if audio_system.is_running() {
-    //    let switch = &mut headset.os_audio;
-    //    if audio_output_switch_selector(ui, switch, audio_system) {
-    //        sender.submit(Action::SaveConfig);
-    //        if auto_update {
-    //            sender.submit(Action::UpdateSystemAudio);
-    //            sender.force(Action::UpdateSystemAudio);
-    //        }
-    //    }
-    //    ui.add_space(10.0);
-    //}
+    if !audio_devices.is_empty() {
+        let switch = &mut headset.os_audio;
+        if audio_output_switch_selector(ui, switch, sender, audio_devices) {
+            sender.submit(Action::SaveConfig);
+            if auto_update {
+                sender.submit(Action::UpdateSystemAudio);
+                sender.force(Action::UpdateSystemAudio);
+            }
+        }
+        ui.add_space(10.0);
+    }
 }
 
 fn get_name(switch: &OsAudio) -> &str {
@@ -72,17 +77,16 @@ fn get_name(switch: &OsAudio) -> &str {
     }
 }
 
-/*
-fn audio_output_switch_selector(ui: &mut Ui, switch: &mut OsAudio) -> bool {
+
+fn audio_output_switch_selector(ui: &mut Ui, switch: &mut OsAudio, sender: &mut ActionProxy, audio_devices: &[String]) -> bool {
     let mut dirty = false;
     let resp = ComboBox::from_label("Audio Action")
         .selected_text(get_name(switch))
         .width(250.0)
         .show_ui(ui, |ui| {
-            let default_device = audio_system
-                .default_device()
-                .or_else(|| audio_system.devices().first())
-                .map(|d| d.name().to_string())
+            let default_device = audio_devices
+                .first()
+                .cloned()
                 .unwrap_or_else(|| String::from("<None>"));
             let options = [
                 OsAudio::Disabled,
@@ -104,33 +108,32 @@ fn audio_output_switch_selector(ui: &mut Ui, switch: &mut OsAudio) -> bool {
             }
         });
     if resp.response.clicked() {
-        audio_system.refresh_devices();
+        sender.submit(Action::RefreshAudioDevices);
     }
     if let OsAudio::ChangeDefault { on_connect, on_disconnect } = switch {
-        dirty |= audio_device_selector(ui, "On Connect", on_connect, audio_system.devices());
-        dirty |= audio_device_selector(ui, "On Disconnect", on_disconnect, audio_system.devices());
+        dirty |= audio_device_selector(ui, "On Connect", on_connect, audio_devices);
+        dirty |= audio_device_selector(ui, "On Disconnect", on_disconnect, audio_devices);
     }
     if let OsAudio::RouteAudio { src, dst } = switch {
-        dirty |= audio_device_selector(ui, "From", src, audio_system.devices());
-        dirty |= audio_device_selector(ui, "To", dst, audio_system.devices());
+        dirty |= audio_device_selector(ui, "From", src, audio_devices);
+        dirty |= audio_device_selector(ui, "To", dst, audio_devices);
     }
     dirty
 }
 
-fn audio_device_selector(ui: &mut Ui, label: &str, selected: &mut String, audio_devices: &[AudioDevice]) -> bool {
+fn audio_device_selector(ui: &mut Ui, label: &str, selected: &mut String, audio_devices: &[String]) -> bool {
     let mut changed = false;
     ComboBox::from_label(label)
         .width(300.0)
         .selected_text(selected.as_str())
         .show_ui(ui, |ui| {
             for dev in audio_devices {
-                let current = dev.name() == selected;
-                if ui.selectable_label(current, dev.name()).clicked() && !current {
-                    *selected = dev.name().to_string();
+                let current = dev == selected;
+                if ui.selectable_label(current, dev).clicked() && !current {
+                    *selected = dev.clone();
                     changed = true;
                 }
             }
         });
     changed
 }
-*/
