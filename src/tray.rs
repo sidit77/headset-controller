@@ -3,7 +3,7 @@ use betrayer::{Icon, Menu, MenuItem, TrayEvent, TrayIconBuilder};
 use flume::{Receiver, Sender};
 use tracing::instrument;
 use color_eyre::Result;
-use futures_lite::FutureExt;
+use futures_lite::{FutureExt, StreamExt};
 use parking_lot::Mutex;
 use crate::{SharedState, WindowUpdate, TrayUpdate};
 use crate::config::{HeadsetConfig};
@@ -36,60 +36,52 @@ pub async fn manage_tray(
             let _ = menu_sender.send(event);
         })?;
 
-    let state_copy = shared_state.clone();
-    let event_handler = async {
-        while let Ok(event) = menu_receiver.recv_async().await {
-            match event {
-                TrayMenuEvent::Profile(id) => {
-                    let _span = tracing::info_span!("profile_change", id).entered();
-                    let mut state = state_copy.lock();
-                    if let Some(config) = state.current_headset_config() {
-                        if id != config.selected_profile_index {
-                            let len = config.profiles.len() as u32;
-                            if id < len {
-                                config.selected_profile_index = id;
-                                action_sender.submit_profile_change();
-                                action_sender.submit_all([Action::SaveConfig, Action::UpdateTray]);
-                            } else {
-                                tracing::warn!(len, "Profile id out of range")
-                            }
+    let event_handler = menu_receiver
+        .stream()
+        .take_while(|event| *event != TrayMenuEvent::Quit)
+        .for_each(|event| match event {
+            TrayMenuEvent::Profile(id) => {
+                let _span = tracing::info_span!("profile_change", id).entered();
+                let mut state = shared_state.lock();
+                if let Some(config) = state.current_headset_config() {
+                    if id != config.selected_profile_index {
+                        let len = config.profiles.len() as u32;
+                        if id < len {
+                            config.selected_profile_index = id;
+                            action_sender.submit_profile_change();
+                            action_sender.submit_all([Action::SaveConfig, Action::UpdateTray]);
                         } else {
-                            tracing::trace!("Profile already selected");
+                            tracing::warn!(len, "Profile id out of range")
                         }
+                    } else {
+                        tracing::trace!("Profile already selected");
                     }
                 }
-                TrayMenuEvent::Open => {
-                    let _ = window_sender.send_async(WindowUpdate::Show).await;
-                }
-                TrayMenuEvent::Quit => {
-                    break;
-                }
             }
-        }
-    };
-
-    let update_handler = async move {
-        while let Ok(update) = tray_receiver.recv_async().await {
-            match update {
-                TrayUpdate::RefreshProfiles => {
-                    let menu = construct_menu(shared_state
-                        .lock()
-                        .current_headset_config());
-                    tray.set_menu(Some(menu));
-                },
-                TrayUpdate::RefreshTooltip => {
-                    let tooltip = shared_state
-                        .lock()
-                        .device
-                        .as_ref()
-                        .map(|d| d.name())
-                        .unwrap_or("Disconnected");
-                    tray.set_tooltip(tooltip);
-                }
+            TrayMenuEvent::Open => {
+                let _ = window_sender.send(WindowUpdate::Show);
             }
-        }
-    };
-
+            TrayMenuEvent::Quit => unreachable!()
+        });
+    let update_handler = tray_receiver
+        .stream()
+        .for_each(|update| match update {
+            TrayUpdate::RefreshProfiles => {
+                let menu = construct_menu(shared_state
+                    .lock()
+                    .current_headset_config());
+                tray.set_menu(Some(menu));
+            },
+            TrayUpdate::RefreshTooltip => {
+                let tooltip = shared_state
+                    .lock()
+                    .device
+                    .as_ref()
+                    .map(|d| d.name())
+                    .unwrap_or("Disconnected");
+                tray.set_tooltip(tooltip);
+            }
+        });
     Ok(update_handler.or(event_handler).await)
 }
 

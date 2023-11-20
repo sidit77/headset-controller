@@ -66,6 +66,8 @@ fn main() -> Result<()> {
         .with(Targets::new()
             .with_target("async_io", LevelFilter::DEBUG)
             .with_target("polling", LevelFilter::DEBUG)
+            .with_target("zbus", LevelFilter::DEBUG)
+            .with_target("betrayer::platform::linux::menu", LevelFilter::DEBUG)
             .with_default(LevelFilter::TRACE))
         .with(layer().without_time())
         //.with(layer().with_ansi(false).with_writer(logfile))
@@ -173,8 +175,8 @@ async fn worker_thread(shared_state: Arc<Mutex<SharedState>>, mut event_receiver
                         let current_device = state.device.as_ref().map(|d| d.name().to_string());
                         (preferred_device, current_device)
                     };
-
-                    if preferred_device != current_device {
+                    tracing::trace!("preferred: {preferred_device:?} current: {current_device:?}");
+                    if preferred_device.is_none() || preferred_device != current_device {
                         let list = shared_state.lock().device_list.clone();
                         let device = list
                             .find_preferred_device(&preferred_device, &executor, update_sender.clone())
