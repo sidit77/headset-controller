@@ -1,3 +1,117 @@
+use std::sync::Arc;
+use betrayer::{Icon, Menu, MenuItem, TrayEvent, TrayIconBuilder};
+use flume::{Receiver, Sender};
+use tracing::instrument;
+use color_eyre::Result;
+use futures_lite::FutureExt;
+use parking_lot::Mutex;
+use crate::{SharedState, ShowWindow, TrayUpdate};
+use crate::config::{HeadsetConfig};
+use crate::debouncer::{Action, ActionProxy, ActionSender};
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+enum TrayMenuEvent {
+    Profile(u32),
+    Open,
+    Quit
+}
+
+#[instrument(skip_all)]
+pub async fn manage_tray(
+    shared_state: Arc<Mutex<SharedState>>,
+    window_sender: Sender<ShowWindow>,
+    mut action_sender: ActionProxy,
+    tray_receiver: Receiver<TrayUpdate>) -> Result<()>
+{
+    #[cfg(windows)]
+    let icon = Icon::from_resource(32512, None)?;
+    #[cfg(not(windows))]
+    let icon = Icon::from_png_bytes(include_bytes!("../resources/icon.png"))?;
+
+    let (menu_sender, menu_receiver) = flume::unbounded();
+    let tray = TrayIconBuilder::<TrayMenuEvent>::new()
+        .with_icon(icon)
+        .with_menu(construct_menu(None))
+        .build(move |event| if let TrayEvent::Menu(event) = event {
+            let _ = menu_sender.send(event);
+        })?;
+
+    let state_copy = shared_state.clone();
+    let event_handler = async {
+        while let Ok(event) = menu_receiver.recv_async().await {
+            match event {
+                TrayMenuEvent::Profile(id) => {
+                    let _span = tracing::info_span!("profile_change", id).entered();
+                    let mut state = state_copy.lock();
+                    if let Some(config) = state.current_headset_config() {
+                        if id != config.selected_profile_index {
+                            let len = config.profiles.len() as u32;
+                            if id < len {
+                                config.selected_profile_index = id;
+                                action_sender.submit_profile_change();
+                                action_sender.submit_all([Action::SaveConfig, Action::UpdateTray]);
+                            } else {
+                                tracing::warn!(len, "Profile id out of range")
+                            }
+                        } else {
+                            tracing::trace!("Profile already selected");
+                        }
+                    }
+                }
+                TrayMenuEvent::Open => {
+                    let _ = window_sender.send_async(ShowWindow).await;
+                }
+                TrayMenuEvent::Quit => {
+                    break;
+                }
+            }
+        }
+    };
+
+    let update_handler = async move {
+        while let Ok(update) = tray_receiver.recv_async().await {
+            match update {
+                TrayUpdate::RefreshProfiles => {
+                    let menu = construct_menu(shared_state
+                        .lock()
+                        .current_headset_config());
+                    tray.set_menu(Some(menu));
+                },
+                TrayUpdate::RefreshTooltip => {
+                    let tooltip = shared_state
+                        .lock()
+                        .device
+                        .as_ref()
+                        .map(|d| d.name())
+                        .unwrap_or("Disconnected");
+                    tray.set_tooltip(tooltip);
+                }
+            }
+        }
+    };
+
+    Ok(update_handler.or(event_handler).await)
+}
+
+fn construct_menu(config: Option<&mut HeadsetConfig>) -> Menu<TrayMenuEvent> {
+    Menu::new([
+        MenuItem::menu("Profiles", config
+            .iter()
+            .flat_map(|config| config
+                .profiles
+                .iter()
+                .enumerate()
+                .map(|(index, profile)| MenuItem::check_button(
+                    &profile.name,
+                    TrayMenuEvent::Profile(index as u32),
+                    index == config.selected_profile_index as usize)))),
+        MenuItem::separator(),
+        MenuItem::button("Open", TrayMenuEvent::Open),
+        MenuItem::button("Close", TrayMenuEvent::Quit)
+    ])
+}
+
+/*
 use tao::event_loop::EventLoopWindowTarget;
 use tao::menu::{ContextMenu, CustomMenuItem, MenuId, MenuItem, MenuItemAttributes};
 use tao::system_tray::{SystemTray, SystemTrayBuilder};
@@ -117,3 +231,4 @@ pub enum TrayEvent {
     Quit,
     Profile(usize)
 }
+*/

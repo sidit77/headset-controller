@@ -43,7 +43,7 @@ async-executor = "1"
 async-hid = { git = "https://github.com/sidit77/async-hid.git"}
 #async-hid = {path = "../async-hid"}
 
-tray-icon = "0.9"
+betrayer = { git = "https://github.com/sidit77/betrayer.git" }
 
 egui = "0.23"
 raw-window-handle = "0.5"
@@ -55,8 +55,8 @@ glow = { version = "0.12", optional = true}
 egui_glow = { version = "0.23", optional = true }
 glutin-winit = { version = "0.3", optional = true }
 
-#egui-d3d11 = { git = "https://github.com/sidit77/egui-d3d11.git"}
-egui-d3d11 = { path = "../egui-d3d11", optional = true}
+egui-d3d11 = { git = "https://github.com/sidit77/egui-d3d11.git", optional = true}
+#egui-d3d11 = { path = "../egui-d3d11", optional = true}
 
 [target."cfg(not(target_os = \"windows\"))".dependencies]
 notify-rust = "4.7"

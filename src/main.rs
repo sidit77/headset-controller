@@ -7,6 +7,7 @@ mod debouncer;
 mod devices;
 mod ui;
 mod notification;
+mod tray;
 
 use color_eyre::Result;
 use std::ops::{DerefMut, Not};
@@ -22,22 +23,34 @@ use tracing_subscriber::filter::{Targets};
 use tracing_subscriber::fmt::layer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tray_icon::menu::{Menu, MenuEvent, MenuItem};
-use tray_icon::{Icon, TrayIconBuilder};
 use parking_lot::Mutex;
 use tracing::instrument;
 use crate::config::{CLOSE_IMMEDIATELY, Config, EqualizerConfig, HeadsetConfig, PRINT_UDEV_RULES, START_QUIET};
 use crate::debouncer::{Action, ActionProxy, ActionReceiver, ActionSender};
 use crate::devices::{BatteryLevel, BoxedDevice, Device, DeviceList, generate_udev_rules};
 use crate::framework::{AsyncGuiWindow, Gui};
+use crate::tray::manage_tray;
 use crate::util::{select, WorkerThread};
 
-struct ShowWindow;
+pub struct ShowWindow;
+pub enum TrayUpdate {
+    RefreshProfiles,
+    RefreshTooltip
+}
 
-struct SharedState {
-    config: Config,
-    device: Option<BoxedDevice>,
-    device_list: DeviceList
+pub struct SharedState {
+    pub config: Config,
+    pub device: Option<BoxedDevice>,
+    pub device_list: DeviceList
+}
+
+impl SharedState {
+    pub fn current_headset_config(&mut self) -> Option<&mut HeadsetConfig> {
+        self
+            .device
+            .as_ref()
+            .map(|d| self.config.get_headset(d.name()))
+    }
 }
 
 fn main() -> Result<()> {
@@ -65,6 +78,7 @@ fn main() -> Result<()> {
     span.exit();
 
     let (window_sender, window_receiver) = flume::unbounded::<ShowWindow>();
+    let (tray_sender, tray_receiver) = flume::unbounded::<TrayUpdate>();
     if START_QUIET.not() {
         let _ = window_sender.send(ShowWindow);
     }
@@ -75,13 +89,13 @@ fn main() -> Result<()> {
     let worker = executor.spawn({
         let shared_state = shared_state.clone();
         WorkerThread::spawn(move || {
-            let result = async_io::block_on(worker_thread(shared_state, event_receiver));
+            let result = async_io::block_on(worker_thread(shared_state, event_receiver, tray_sender));
             tracing::trace!("async-io helper thread is shutting down");
             result
         })
     });
-    let window = executor.spawn(manage_window(shared_state.clone(), window_receiver, event_sender));
-    let tray = executor.spawn(manage_tray(window_sender));
+    let window = executor.spawn(manage_window(shared_state.clone(), window_receiver, event_sender.clone()));
+    let tray = executor.spawn(manage_tray(shared_state.clone(), window_sender, event_sender, tray_receiver));
 
     framework::block_on(executor.run(async move {
         window.or(tray).or(worker).await
@@ -89,7 +103,7 @@ fn main() -> Result<()> {
 }
 
 #[instrument(skip_all)]
-async fn worker_thread(shared_state: Arc<Mutex<SharedState>>, mut event_receiver: ActionReceiver) -> Result<()> {
+async fn worker_thread(shared_state: Arc<Mutex<SharedState>>, mut event_receiver: ActionReceiver, tray_sender: Sender<TrayUpdate>) -> Result<()> {
     let executor = LocalExecutor::new();
 
     let (update_sender, update_receiver) = flume::unbounded();
@@ -181,13 +195,14 @@ async fn worker_thread(shared_state: Arc<Mutex<SharedState>>, mut event_receiver
                         .unwrap_or_else(|err| tracing::warn!("Could not save config: {:?}", err));
                 }
                 Action::UpdateTray => {
-                    //TODO REIMPLEMENT
-                    //let mut config = config.lock();
-                    //update_tray(&mut tray, &mut config, device.lock().as_ref().map(|d| d.name()))
+                    tray_sender
+                        .send(TrayUpdate::RefreshProfiles)
+                        .unwrap_or_else(|_| tracing::warn!("Tray not longer alive"));
                 },
                 Action::UpdateTrayTooltip => {
-                    //TODO REIMPLEMENT
-                    //update_tray_tooltip(&mut tray, &device.lock())
+                    tray_sender
+                        .send(TrayUpdate::RefreshTooltip)
+                        .unwrap_or_else(|_| tracing::warn!("Tray not longer alive"));
                 },
                 action => {
                     let mut state = shared_state.lock();
@@ -237,35 +252,6 @@ async fn manage_window(shared_state: Arc<Mutex<SharedState>>, receiver: Receiver
         .await
 }
 
-#[instrument(skip_all)]
-async fn manage_tray(window_sender: Sender<ShowWindow>) -> Result<()> {
-    let menu_events: Receiver<MenuEvent> = {
-        let (sender, receiver) = flume::unbounded();
-        MenuEvent::set_event_handler(Some(move |event| sender.send(event).unwrap()));
-        receiver
-    };
-
-    let _tray_icon = TrayIconBuilder::new()
-        .with_icon(Icon::from_rgba(vec![255,255,255,255], 1, 1).unwrap())
-        .with_menu(Box::new(Menu::with_items(&[
-            &MenuItem::with_id("open", "Open", true, None),
-            &MenuItem::with_id("quit", "Quit", true, None)
-        ]).unwrap()))
-        .build()?;
-
-    while let Ok(event) = menu_events.recv_async().await {
-        match event.id {
-            id if id == "open" => {
-                let _ = window_sender.send_async(ShowWindow).await;
-            },
-            id if id == "quit" => {
-                break;
-            }
-            _ => {}
-        }
-    }
-    Ok(())
-}
 
 #[instrument(skip_all, fields(name = %device.name()))]
 fn apply_config_to_device(action: Action, device: &dyn Device, headset: &mut HeadsetConfig) {
