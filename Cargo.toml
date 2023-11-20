@@ -32,12 +32,12 @@ enum-iterator = "1"
 
 fixed-map = "0.9"
 flume = "0.11"
-event-listener = "3"
+event-listener = "4"
 oneshot = "0.1"
 crossbeam-utils = "0.8"
 parking_lot = "0.12"
 
-futures-lite = "1"
+futures-lite = "2"
 async-io = "2"
 async-executor = "1"
 async-hid = { git = "https://github.com/sidit77/async-hid.git"}
@@ -63,13 +63,13 @@ notify-rust = "4.7"
 png = "0.17"
 
 [target."cfg(target_os = \"windows\")".dependencies]
-com-policy-config = "0.3"
+com-policy-config = "0.5"
 widestring = "1"
-winreg = "0.51"
+winreg = "0.52"
 dunce = "1"
 
 [target."cfg(target_os = \"windows\")".dependencies.windows]
-version = "0.51"
+version = "0.52"
 features = [
     "Win32_Foundation",
     "Win32_Media_Audio",
