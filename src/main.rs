@@ -32,7 +32,11 @@ use crate::framework::{AsyncGuiWindow, Gui};
 use crate::tray::manage_tray;
 use crate::util::{select, WorkerThread};
 
-pub struct ShowWindow;
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum WindowUpdate {
+    Show,
+    Refresh
+}
 pub enum TrayUpdate {
     RefreshProfiles,
     RefreshTooltip
@@ -77,10 +81,10 @@ fn main() -> Result<()> {
 
     span.exit();
 
-    let (window_sender, window_receiver) = flume::unbounded::<ShowWindow>();
+    let (window_sender, window_receiver) = flume::unbounded::<WindowUpdate>();
     let (tray_sender, tray_receiver) = flume::unbounded::<TrayUpdate>();
     if START_QUIET.not() {
-        let _ = window_sender.send(ShowWindow);
+        let _ = window_sender.send(WindowUpdate::Show);
     }
 
     let (event_sender, event_receiver) = debouncer::debouncer();
@@ -88,8 +92,9 @@ fn main() -> Result<()> {
     let executor = LocalExecutor::new();
     let worker = executor.spawn({
         let shared_state = shared_state.clone();
+        let window_sender = window_sender.clone();
         WorkerThread::spawn(move || {
-            let result = async_io::block_on(worker_thread(shared_state, event_receiver, tray_sender));
+            let result = async_io::block_on(worker_thread(shared_state, event_receiver, tray_sender, window_sender));
             tracing::trace!("async-io helper thread is shutting down");
             result
         })
@@ -103,7 +108,7 @@ fn main() -> Result<()> {
 }
 
 #[instrument(skip_all)]
-async fn worker_thread(shared_state: Arc<Mutex<SharedState>>, mut event_receiver: ActionReceiver, tray_sender: Sender<TrayUpdate>) -> Result<()> {
+async fn worker_thread(shared_state: Arc<Mutex<SharedState>>, mut event_receiver: ActionReceiver, tray_sender: Sender<TrayUpdate>, window_sender: Sender<WindowUpdate>) -> Result<()> {
     let executor = LocalExecutor::new();
 
     let (update_sender, update_receiver) = flume::unbounded();
@@ -148,6 +153,7 @@ async fn worker_thread(shared_state: Arc<Mutex<SharedState>>, mut event_receiver
                             last_battery = current_battery;
                         }
                     }
+                    let _ = window_sender.send(WindowUpdate::Refresh);
                 }
                 Action::RefreshDeviceList => {
                     shared_state.lock().device = None;
@@ -158,6 +164,7 @@ async fn worker_thread(shared_state: Arc<Mutex<SharedState>>, mut event_receiver
                             DeviceList::empty()
                         });
                     shared_state.lock().device_list = list;
+                    let _ = window_sender.send(WindowUpdate::Refresh);
                 },
                 Action::SwitchDevice => {
                     let (preferred_device, current_device) = {
@@ -174,6 +181,7 @@ async fn worker_thread(shared_state: Arc<Mutex<SharedState>>, mut event_receiver
                             .await;
                         shared_state.lock().device = device;
                         event_receiver.submit_all([Action::UpdateTray, Action::UpdateTrayTooltip]);
+                        let _ = window_sender.send(WindowUpdate::Refresh);
                     } else {
                         tracing::debug!("Preferred device is already active")
                     }
@@ -209,7 +217,8 @@ async fn worker_thread(shared_state: Arc<Mutex<SharedState>>, mut event_receiver
                     let state = state.deref_mut();
                     if let Some(device) = state.device.as_ref() {
                         let headset = state.config.get_headset(device.name());
-                        apply_config_to_device(action, device.as_ref(), headset)
+                        apply_config_to_device(action, device.as_ref(), headset);
+                        let _ = window_sender.send(WindowUpdate::Refresh);
                     }
                 }
             }
@@ -222,9 +231,10 @@ async fn worker_thread(shared_state: Arc<Mutex<SharedState>>, mut event_receiver
 }
 
 #[instrument(skip_all)]
-async fn manage_window(shared_state: Arc<Mutex<SharedState>>, receiver: Receiver<ShowWindow>, event_sender: ActionProxy) -> Result<()> {
+async fn manage_window(shared_state: Arc<Mutex<SharedState>>, receiver: Receiver<WindowUpdate>, event_sender: ActionProxy) -> Result<()> {
     receiver
         .stream()
+        .filter(|update| *update == WindowUpdate::Show)
         .then(|_| async {
             let mut event_sender = event_sender.clone();
             let shared_state = shared_state.clone();
@@ -242,8 +252,11 @@ async fn manage_window(shared_state: Arc<Mutex<SharedState>>, receiver: Receiver
                     None => ui::no_device_ui(ctx, &mut event_sender)
                 }
             })).await;
-            while let Either::Right(Ok(ShowWindow)) = select(window.close_requested(), receiver.recv_async()).await {
-                window.focus();
+            while let Either::Right(Ok(update)) = select(window.close_requested(), receiver.recv_async()).await {
+                match update {
+                    WindowUpdate::Show => window.focus(),
+                    WindowUpdate::Refresh => window.request_redraw(),
+                }
             }
             Ok(())
         })

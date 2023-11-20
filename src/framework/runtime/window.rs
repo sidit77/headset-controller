@@ -33,6 +33,10 @@ impl AsyncGuiWindow {
         self.reactor.with_window(self.id, |w| w.focus())
     }
 
+    pub fn request_redraw(&self) {
+        self.reactor.with_window(self.id, |w| w.request_redraw())
+    }
+
 }
 
 impl Drop for AsyncGuiWindow {

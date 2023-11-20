@@ -5,7 +5,7 @@ use tracing::instrument;
 use color_eyre::Result;
 use futures_lite::FutureExt;
 use parking_lot::Mutex;
-use crate::{SharedState, ShowWindow, TrayUpdate};
+use crate::{SharedState, WindowUpdate, TrayUpdate};
 use crate::config::{HeadsetConfig};
 use crate::debouncer::{Action, ActionProxy, ActionSender};
 
@@ -19,7 +19,7 @@ enum TrayMenuEvent {
 #[instrument(skip_all)]
 pub async fn manage_tray(
     shared_state: Arc<Mutex<SharedState>>,
-    window_sender: Sender<ShowWindow>,
+    window_sender: Sender<WindowUpdate>,
     mut action_sender: ActionProxy,
     tray_receiver: Receiver<TrayUpdate>) -> Result<()>
 {
@@ -59,7 +59,7 @@ pub async fn manage_tray(
                     }
                 }
                 TrayMenuEvent::Open => {
-                    let _ = window_sender.send_async(ShowWindow).await;
+                    let _ = window_sender.send_async(WindowUpdate::Show).await;
                 }
                 TrayMenuEvent::Quit => {
                     break;
