@@ -6,6 +6,7 @@ edition = "2021"
 [workspace]
 members = [
     ".",
+    "lib/hc-foundation",
     "lib/hc-system-audio"
 ]
 
@@ -20,6 +21,7 @@ opengl = ["glutin", "glow", "egui_glow", "glutin-winit"]
 default = ["opengl"]
 
 [dependencies]
+hc-foundation = { path = "lib/hc-foundation" }
 hc-system-audio = { path = "lib/hc-system-audio" }
 
 tracing = "0.1"
