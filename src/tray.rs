@@ -87,7 +87,8 @@ pub async fn manage_tray(
                 tray.set_tooltip(tooltip);
             }
         });
-    Ok(update_handler.or(event_handler).await)
+    update_handler.or(event_handler).await;
+    Ok(())
 }
 
 fn construct_menu(config: Option<&mut HeadsetConfig>) -> Menu<TrayMenuEvent> {

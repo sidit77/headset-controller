@@ -67,7 +67,7 @@ impl AudioManager {
             match self.enumerator.GetDefaultAudioEndpoint(eRender, eConsole) {
                 Ok(dev) => Some(AudioDevice::new(dev)),
                 Err(err) if err.code() == HRESULT::from(ERROR_NOT_FOUND) => None,
-                Err(err) => Err(err).expect("Unexpected error")
+                Err(err) => panic!("Unexpected error: {}", err)
             }
         }
     }

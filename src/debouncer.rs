@@ -147,9 +147,6 @@ impl Stream for ActionReceiver {
     type Item = Action;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        if self.receiver.is_disconnected() {
-
-        }
         let empty_remaining = self.receiver.is_disconnected() || loop {
             match self.receiver.poll_next(cx) {
                 Poll::Ready(Some(op)) => match op {

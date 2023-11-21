@@ -46,10 +46,7 @@ impl SupportedDevice {
     }
 
     pub const fn is_real(&self) -> bool {
-        match self {
-            SupportedDevice::DummyDevice => false,
-            _ => true
-        }
+        !matches!(self, SupportedDevice::DummyDevice)
     }
 
     async fn open(self, executor: &LocalExecutor<'_>, update_channel: UpdateChannel, interfaces: &InterfaceMap) -> DeviceResult<BoxedDevice> {
@@ -209,7 +206,7 @@ pub fn generate_udev_rules() -> DeviceResult<String> {
     let mut rules = String::new();
 
     writeln!(rules, r#"ACTION!="add|change", GOTO="headsets_end""#)?;
-    writeln!(rules, "")?;
+    writeln!(rules)?;
 
     for device in all::<SupportedDevice>().filter(SupportedDevice::is_real) {
         writeln!(rules, "# {}", device.name())?;
@@ -221,7 +218,7 @@ pub fn generate_udev_rules() -> DeviceResult<String> {
         for (vid, pid) in codes {
             writeln!(rules, r#"KERNEL=="hidraw*", ATTRS{{idVendor}}=="{vid:04x}", ATTRS{{idProduct}}=="{pid:04x}", TAG+="uaccess""#)?;
         }
-        writeln!(rules, "")?;
+        writeln!(rules)?;
     }
 
     writeln!(rules, r#"LABEL="headsets_end""#)?;

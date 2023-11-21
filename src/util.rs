@@ -186,6 +186,7 @@ impl<T> VecExt<T> for Vec<T> {
 }
 
 pub trait OptionExt<T> {
+    #[allow(clippy::wrong_self_convention)]
     fn is_none_or(self, f: impl FnOnce(T) -> bool) -> bool;
 }
 
