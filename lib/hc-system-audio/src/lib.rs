@@ -10,7 +10,8 @@ pub struct AudioManager(platform::AudioManager);
 #[repr(transparent)]
 pub struct AudioDevice(platform::AudioDevice);
 
-pub struct AudioRedirection;
+#[repr(transparent)]
+pub struct AudioRedirection(platform::AudioRedirection);
 
 impl AudioManager {
 
@@ -72,11 +73,12 @@ impl Debug for AudioDevice {
 impl AudioRedirection {
 
     pub const fn is_supported() -> bool {
-        false
+        platform::AudioRedirection::is_supported()
     }
 
-    pub fn new(_src: &AudioDevice, _dst: &AudioDevice) -> Result<Self> {
-        unimplemented!()
+    pub fn new(src: &AudioDevice, dst: &AudioDevice) -> Result<Self> {
+        platform::AudioRedirection::new(&src.0, &dst.0)
+            .map(Self)
     }
 
 }

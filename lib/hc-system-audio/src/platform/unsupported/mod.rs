@@ -6,6 +6,8 @@ pub struct AudioManager;
 #[derive(Clone, Eq, PartialEq)]
 pub struct AudioDevice;
 
+pub struct AudioRedirection;
+
 impl AudioManager {
 
     pub const fn switching_supported() -> bool {
@@ -35,4 +37,14 @@ impl AudioDevice {
         unimplemented!()
     }
 
+}
+
+impl AudioRedirection {
+    pub const fn is_supported() -> bool {
+        false
+    }
+
+    pub fn new(_src: &AudioDevice, _dst: &AudioDevice) -> Result<Self> {
+        unimplemented!()
+    }
 }

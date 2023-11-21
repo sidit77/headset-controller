@@ -6,8 +6,17 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["switching-windows"]
+default = [
+    "switching-windows",
+    "redirection-windows"
+]
 switching-windows = ["com-policy-config"]
+redirection-windows = [
+    "windows/implement",
+    "windows/Win32_Media_Audio_Endpoints",
+    "windows/Win32_Security",
+    "windows/Win32_System_Threading"
+]
 
 [dependencies]
 hc-foundation = { path = "../hc-foundation" }

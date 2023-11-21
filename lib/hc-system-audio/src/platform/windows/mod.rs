@@ -1,5 +1,8 @@
 mod com;
 
+#[cfg(feature = "redirection-windows")]
+mod redirection;
+
 use std::iter::FusedIterator;
 #[cfg(feature = "switching-windows")]
 use com_policy_config::{IPolicyConfig, PolicyConfigClient};
@@ -12,7 +15,9 @@ use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, STGM_READ};
 use windows::Win32::System::Com::StructuredStorage::PropVariantClear;
 use windows::Win32::System::Variant::VT_LPWSTR;
 use hc_foundation::Result;
-use crate::platform::windows::com::{ComPtr, initialize_com};
+use com::{ComPtr, initialize_com};
+
+pub use redirection::AudioRedirection;
 
 #[derive(Debug, Clone)]
 pub struct AudioManager {
@@ -166,3 +171,21 @@ impl PartialEq for AudioDevice {
     }
 }
 impl Eq for AudioDevice {}
+
+
+#[cfg(not(feature = "redirection-windows"))]
+mod redirection {
+    use super::AudioDevice;
+    use hc_foundation::Result;
+
+    pub struct AudioRedirection;
+    impl AudioRedirection {
+        pub const fn is_supported() -> bool {
+            false
+        }
+
+        pub fn new(_src: &AudioDevice, _dst: &AudioDevice) -> Result<Self> {
+            unimplemented!()
+        }
+    }
+}

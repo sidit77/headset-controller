@@ -25,7 +25,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use parking_lot::Mutex;
 use tracing::instrument;
-use hc_system_audio::{AudioDevice, AudioManager, AudioRedirection};
+use hc_system_audio::{AudioManager, AudioRedirection};
 use crate::config::{CLOSE_IMMEDIATELY, Config, EqualizerConfig, HeadsetConfig, OsAudio, PRINT_UDEV_RULES, START_QUIET};
 use crate::debouncer::{Action, ActionProxy, ActionReceiver, ActionSender};
 use crate::devices::{BatteryLevel, BoxedDevice, Device, DeviceList, generate_udev_rules};

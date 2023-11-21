@@ -1,4 +1,6 @@
 use std::marker::PhantomData;
+use std::ops::Deref;
+use windows::core::Interface;
 use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx, CoTaskMemFree, CoUninitialize};
 
 struct ComWrapper {
@@ -52,5 +54,25 @@ impl<T> Drop for ComPtr<T> {
                 CoTaskMemFree(Some(self.0 as _));
             }
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct ComObj<T>(T);
+unsafe impl<T> Send for ComObj<T> {}
+unsafe impl<T> Sync for ComObj<T> {}
+
+impl<T: Interface> ComObj<T> {
+    #[allow(dead_code)]
+    pub fn new(obj: T) -> Self {
+        Self(obj)
+    }
+}
+
+impl<T> Deref for ComObj<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
