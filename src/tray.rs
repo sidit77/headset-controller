@@ -2,12 +2,17 @@ use std::sync::Arc;
 use betrayer::{Icon, Menu, MenuItem, TrayEvent, TrayIconBuilder};
 use flume::{Receiver, Sender};
 use tracing::instrument;
-use color_eyre::Result;
+use hc_foundation::Result;
 use futures_lite::{FutureExt, StreamExt};
 use parking_lot::Mutex;
-use crate::{SharedState, WindowUpdate, TrayUpdate};
+use crate::{SharedState, WindowUpdate};
 use crate::config::{HeadsetConfig};
 use crate::debouncer::{Action, ActionProxy, ActionSender};
+
+pub enum TrayUpdate {
+    RefreshProfiles,
+    RefreshTooltip
+}
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum TrayMenuEvent {

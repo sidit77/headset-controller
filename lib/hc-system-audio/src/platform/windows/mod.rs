@@ -24,7 +24,7 @@ pub struct AudioManager {
 impl AudioManager {
 
     pub const fn switching_supported() -> bool {
-        true
+        cfg!(feature = "switching-windows")
     }
 
     pub fn new() -> Result<Self> {

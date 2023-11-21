@@ -94,7 +94,7 @@ pub fn central_panel(ui: &mut Ui, sender: &mut ActionProxy, config: &mut Config,
 mod autostart {
     use std::ffi::OsString;
 
-    use color_eyre::Result;
+    use hc_foundation::Result;
     use winreg::enums::HKEY_CURRENT_USER;
     use winreg::types::FromRegValue;
     use winreg::RegKey;

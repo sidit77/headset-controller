@@ -1328,7 +1328,6 @@ dependencies = [
  "async-hid",
  "async-io 2.2.0",
  "betrayer",
- "color-eyre",
  "com-policy-config",
  "crossbeam-utils",
  "directories-next",

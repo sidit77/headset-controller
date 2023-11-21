@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use color_eyre::Result;
+use hc_foundation::Result;
 
 #[cfg(target_os = "windows")]
 pub fn notify(msg_title: &str, msg_body: &str, duration: Duration) -> Result<()> {

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use color_eyre::Result;
+use hc_foundation::Result;
 use directories_next::BaseDirs;
 use once_cell::sync::Lazy;
 use ron::ser::{to_string_pretty, PrettyConfig};

@@ -9,7 +9,7 @@ mod ui;
 mod notification;
 mod tray;
 
-use color_eyre::Result;
+use hc_foundation::Result;
 use std::ops::{DerefMut, Not};
 use std::sync::Arc;
 use std::time::Duration;
@@ -25,11 +25,12 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use parking_lot::Mutex;
 use tracing::instrument;
+use hc_system_audio::AudioManager;
 use crate::config::{CLOSE_IMMEDIATELY, Config, EqualizerConfig, HeadsetConfig, PRINT_UDEV_RULES, START_QUIET};
 use crate::debouncer::{Action, ActionProxy, ActionReceiver, ActionSender};
 use crate::devices::{BatteryLevel, BoxedDevice, Device, DeviceList, generate_udev_rules};
 use crate::framework::{AsyncGuiWindow, Gui};
-use crate::tray::manage_tray;
+use crate::tray::{manage_tray, TrayUpdate};
 use crate::util::{select, WorkerThread};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -37,10 +38,7 @@ pub enum WindowUpdate {
     Show,
     Refresh
 }
-pub enum TrayUpdate {
-    RefreshProfiles,
-    RefreshTooltip
-}
+
 
 pub struct SharedState {
     pub config: Config,
@@ -60,7 +58,7 @@ impl SharedState {
 
 fn main() -> Result<()> {
     if *PRINT_UDEV_RULES { return Ok(println!("{}", generate_udev_rules()?)); }
-    color_eyre::install()?;
+    hc_foundation::install()?;
     //let logfile = Mutex::new(log_file());
     tracing_subscriber::registry()
         .with(ErrorLayer::default())
@@ -80,7 +78,7 @@ fn main() -> Result<()> {
         config: Config::load()?,
         device: None,
         device_list: DeviceList::empty(),
-        audio_devices: vec!["Headset".to_string(), "Speaker".to_string()]
+        audio_devices: Vec::new()
     }));
 
     span.exit();
@@ -113,6 +111,8 @@ fn main() -> Result<()> {
 
 #[instrument(skip_all)]
 async fn worker_thread(shared_state: Arc<Mutex<SharedState>>, mut event_receiver: ActionReceiver, tray_sender: Sender<TrayUpdate>, window_sender: Sender<WindowUpdate>) -> Result<()> {
+    let audio_manager = AudioManager::new()?;
+
     let executor = LocalExecutor::new();
 
     let (update_sender, update_receiver) = flume::unbounded();
@@ -196,6 +196,13 @@ async fn worker_thread(shared_state: Arc<Mutex<SharedState>>, mut event_receiver
                     } else {
                         tracing::debug!("Preferred device is already active")
                     }
+                },
+                Action::RefreshAudioDevices => {
+                    let devices = audio_manager
+                        .devices()
+                        .map(|d| d.name().to_string())
+                        .collect::<Vec<_>>();
+                    shared_state.lock().audio_devices = devices;
                 }
                 Action::UpdateSystemAudio => {
                     //TODO REIMPLEMENT
