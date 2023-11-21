@@ -10,6 +10,8 @@ pub struct AudioManager(platform::AudioManager);
 #[repr(transparent)]
 pub struct AudioDevice(platform::AudioDevice);
 
+pub struct AudioRedirection;
+
 impl AudioManager {
 
     pub const fn switching_supported() -> bool {
@@ -25,6 +27,11 @@ impl AudioManager {
         self.0
             .devices()
             .map(AudioDevice)
+    }
+
+    pub fn find_device_by_name(&self, name: &str) -> Option<AudioDevice> {
+        self.devices()
+            .find(|dev| dev.name() == name)
     }
 
     pub fn get_default_device(&self) -> Option<AudioDevice> {
@@ -59,5 +66,23 @@ impl Debug for AudioDevice {
         f.debug_struct("AudioDevice")
             .field("name", &self.name())
             .finish()
+    }
+}
+
+impl AudioRedirection {
+
+    pub const fn is_supported() -> bool {
+        false
+    }
+
+    pub fn new(_src: &AudioDevice, _dst: &AudioDevice) -> Result<Self> {
+        unimplemented!()
+    }
+
+}
+
+impl Debug for AudioRedirection {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AudioRedirection").finish()
     }
 }

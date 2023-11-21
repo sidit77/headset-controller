@@ -184,3 +184,16 @@ impl<T> VecExt<T> for Vec<T> {
         self.rotate_right(offset);
     }
 }
+
+pub trait OptionExt<T> {
+    fn is_none_or(self, f: impl FnOnce(T) -> bool) -> bool;
+}
+
+impl<T> OptionExt<T> for Option<T> {
+    fn is_none_or(self, f: impl FnOnce(T) -> bool) -> bool {
+        match self {
+            None => true,
+            Some(inner) => f(inner)
+        }
+    }
+}

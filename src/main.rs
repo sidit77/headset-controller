@@ -25,13 +25,13 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use parking_lot::Mutex;
 use tracing::instrument;
-use hc_system_audio::AudioManager;
-use crate::config::{CLOSE_IMMEDIATELY, Config, EqualizerConfig, HeadsetConfig, PRINT_UDEV_RULES, START_QUIET};
+use hc_system_audio::{AudioDevice, AudioManager, AudioRedirection};
+use crate::config::{CLOSE_IMMEDIATELY, Config, EqualizerConfig, HeadsetConfig, OsAudio, PRINT_UDEV_RULES, START_QUIET};
 use crate::debouncer::{Action, ActionProxy, ActionReceiver, ActionSender};
 use crate::devices::{BatteryLevel, BoxedDevice, Device, DeviceList, generate_udev_rules};
 use crate::framework::{AsyncGuiWindow, Gui};
 use crate::tray::{manage_tray, TrayUpdate};
-use crate::util::{select, WorkerThread};
+use crate::util::{OptionExt, select, WorkerThread};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum WindowUpdate {
@@ -112,6 +112,7 @@ fn main() -> Result<()> {
 #[instrument(skip_all)]
 async fn worker_thread(shared_state: Arc<Mutex<SharedState>>, mut event_receiver: ActionReceiver, tray_sender: Sender<TrayUpdate>, window_sender: Sender<WindowUpdate>) -> Result<()> {
     let audio_manager = AudioManager::new()?;
+    let mut audio_redirection = None;
 
     let executor = LocalExecutor::new();
 
@@ -205,6 +206,40 @@ async fn worker_thread(shared_state: Arc<Mutex<SharedState>>, mut event_receiver
                     shared_state.lock().audio_devices = devices;
                 }
                 Action::UpdateSystemAudio => {
+                    let mut state = shared_state.lock();
+                    let connected = state.device.as_ref().is_some_and(|d| d.is_connected());
+                    if let Some(config) = state.current_headset_config() {
+                        audio_redirection = None;
+                        match &config.os_audio {
+                            OsAudio::ChangeDefault { on_connect, on_disconnect } if AudioManager::switching_supported() => {
+                                let target = match connected {
+                                    true => on_connect,
+                                    false => on_disconnect
+                                };
+                                match audio_manager.find_device_by_name(target) {
+                                    None => tracing::info!("Couldn't find device {target}"),
+                                    Some(device) => match audio_manager.get_default_device().is_none_or(|dev| dev != device) {
+                                        false => tracing::info!("Device \"{}\" is already active", device.name()),
+                                        true => audio_manager
+                                        .set_default_device(&device)
+                                        .unwrap_or_else(|err| tracing::warn!("Could not change default audio device: {:?}", err))
+                                    }
+                                }
+                            },
+                            OsAudio::RouteAudio { src, dst } if AudioRedirection::is_supported() => {
+                                match audio_manager.find_device_by_name(src).zip(audio_manager.find_device_by_name(dst)) {
+                                    None => tracing::warn!("Could not find both audio devices"),
+                                    Some((src, dst)) => {
+                                        audio_redirection = AudioRedirection::new(&src, &dst)
+                                            .map_err(|err| tracing::warn!("Could not start audio routing: {:?}", err))
+                                            .ok();
+                                    }
+                                }
+                            }
+                            OsAudio::Disabled => {}
+                            _ => tracing::debug!("Audio action not supported on this OS")
+                        }
+                    }
                     //TODO REIMPLEMENT
                     //let device = device.lock();
                     //if let Some(device) = device.as_ref() {
