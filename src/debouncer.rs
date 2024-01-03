@@ -1,11 +1,11 @@
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
-use async_io::Timer;
 use fixed_map::{Key, Map};
 use flume::{Sender};
 use futures_lite::{FutureExt, Stream, StreamExt};
 use tracing::instrument;
+use hc_foundation::Timer;
 
 use crate::util::PeekExt;
 

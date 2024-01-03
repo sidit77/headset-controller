@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 color-eyre = "0.6"
+async-io = "2"
+async-executor = "1"

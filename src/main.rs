@@ -6,14 +6,12 @@ mod config;
 mod debouncer;
 mod devices;
 mod ui;
-mod notification;
 mod tray;
 
-use hc_foundation::Result;
+use hc_foundation::{LocalExecutor, Result};
 use std::ops::{DerefMut, Not};
 use std::sync::Arc;
 use std::time::Duration;
-use async_executor::LocalExecutor;
 use either::Either;
 use flume::{Receiver, Sender};
 use futures_lite::{StreamExt, FutureExt};
@@ -96,7 +94,7 @@ fn main() -> Result<()> {
         let shared_state = shared_state.clone();
         let window_sender = window_sender.clone();
         WorkerThread::spawn(move || {
-            let result = async_io::block_on(worker_thread(shared_state, event_receiver, tray_sender, window_sender));
+            let result = hc_foundation::block_on(worker_thread(shared_state, event_receiver, tray_sender, window_sender));
             tracing::trace!("async-io helper thread is shutting down");
             result
         })
@@ -154,7 +152,7 @@ async fn worker_thread(shared_state: Arc<Mutex<SharedState>>, mut event_receiver
                         let current_battery = device.get_battery_status();
                         if current_connection != last_connected {
                             let msg = build_notification_text(current_connection, &[current_battery, last_battery]);
-                            notification::notify(device.name(), &msg, Duration::from_secs(2))
+                            hc_notification::notify(&executor, device.name(), &msg, Duration::from_secs(2))
                                 .unwrap_or_else(|err| tracing::warn!("Can not create notification: {:?}", err));
                             event_receiver.submit_all([Action::UpdateSystemAudio, Action::UpdateTrayTooltip]);
                             event_receiver.force(Action::UpdateSystemAudio);

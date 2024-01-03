@@ -1,11 +1,9 @@
 use std::time::Duration;
 
-use hc_foundation::Result;
+use hc_foundation::{LocalExecutor, Result, Timer};
 
 #[cfg(target_os = "windows")]
-pub fn notify(msg_title: &str, msg_body: &str, duration: Duration) -> Result<()> {
-    use std::thread;
-
+pub fn notify(executor: &LocalExecutor<'_>, msg_title: &str, msg_body: &str, duration: Duration) -> Result<()> {
     use windows::core::HSTRING;
     use windows::UI::Notifications::{ToastNotification, ToastNotificationManager, ToastTemplateType};
 
@@ -24,17 +22,19 @@ pub fn notify(msg_title: &str, msg_body: &str, duration: Duration) -> Result<()>
 
     let notifier = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from("HeadsetController"))?;
     notifier.Show(&toast)?;
-    thread::spawn(move || {
-        thread::sleep(duration);
-        notifier
-            .Hide(&toast)
-            .unwrap_or_else(|err| tracing::warn!("Can not hide notification: {}", err));
-    });
+    executor
+        .spawn(async move {
+            Timer::after(duration).await;
+            notifier
+                .Hide(&toast)
+                .unwrap_or_else(|err| tracing::warn!("Can not hide notification: {}", err));
+        })
+        .detach();
     Ok(())
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn notify(msg_title: &str, msg_body: &str, duration: Duration) -> Result<()> {
+pub fn notify(executor: &LocalExecutor<'_>, msg_title: &str, msg_body: &str, duration: Duration) -> Result<()> {
     notify_rust::Notification::new()
         .summary(msg_title)
         .body(msg_body)
@@ -42,3 +42,4 @@ pub fn notify(msg_title: &str, msg_body: &str, duration: Duration) -> Result<()>
         .show()?;
     Ok(())
 }
+

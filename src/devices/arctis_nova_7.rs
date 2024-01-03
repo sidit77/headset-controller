@@ -1,14 +1,13 @@
 use std::sync::Arc;
 use std::time::Duration;
-use async_executor::Task;
 use async_hid::{AccessMode, HidResult};
 use crossbeam_utils::atomic::AtomicCell;
 use static_assertions::const_assert;
 use async_hid::Device as HidDevice;
-use async_io::Timer;
 use either::Either;
 
 use flume::{Receiver, RecvError, unbounded};
+use hc_foundation::{Task, Timer};
 
 use crate::devices::*;
 use crate::util::{AtomicCellExt, select, SenderExt, VecExt};

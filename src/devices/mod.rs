@@ -3,10 +3,9 @@ mod dummy;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter, Write};
-use async_executor::LocalExecutor;
 
 use async_hid::{DeviceInfo, HidError};
-use hc_foundation::Error as EyreError;
+use hc_foundation::{Error as EyreError, LocalExecutor};
 use enum_iterator::{all, Sequence};
 use flume::Sender;
 use futures_lite::stream::StreamExt;

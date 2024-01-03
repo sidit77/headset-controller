@@ -1306,7 +1306,19 @@ checksum = "f93e7192158dbcda357bdec5fb5788eebf8bbac027f3f33e719d29135ae84156"
 name = "hc-foundation"
 version = "0.1.0"
 dependencies = [
+ "async-executor",
+ "async-io 2.2.0",
  "color-eyre",
+]
+
+[[package]]
+name = "hc-notification"
+version = "0.1.0"
+dependencies = [
+ "hc-foundation",
+ "notify-rust",
+ "tracing",
+ "windows 0.52.0",
 ]
 
 [[package]]
@@ -1324,9 +1336,7 @@ dependencies = [
 name = "headset-controller"
 version = "0.1.0"
 dependencies = [
- "async-executor",
  "async-hid",
- "async-io 2.2.0",
  "betrayer",
  "crossbeam-utils",
  "directories-next",
@@ -1345,9 +1355,9 @@ dependencies = [
  "glutin",
  "glutin-winit",
  "hc-foundation",
+ "hc-notification",
  "hc-system-audio",
  "ico",
- "notify-rust",
  "once_cell",
  "oneshot",
  "parking_lot",

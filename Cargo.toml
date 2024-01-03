@@ -7,6 +7,7 @@ edition = "2021"
 members = [
     ".",
     "lib/hc-foundation",
+    "lib/hc-notification",
     "lib/hc-system-audio"
 ]
 
@@ -23,6 +24,7 @@ default = ["opengl"]
 [dependencies]
 hc-foundation = { path = "lib/hc-foundation" }
 hc-system-audio = { path = "lib/hc-system-audio" }
+hc-notification = { path = "lib/hc-notification" }
 
 tracing = "0.1"
 tracing-subscriber = "0.3"
@@ -47,8 +49,6 @@ crossbeam-utils = "0.8"
 parking_lot = "0.12"
 
 futures-lite = "2"
-async-io = "2"
-async-executor = "1"
 async-hid = { git = "https://github.com/sidit77/async-hid.git"}
 #async-hid = {path = "../async-hid"}
 
@@ -68,7 +68,6 @@ egui-d3d11 = { git = "https://github.com/sidit77/egui-d3d11.git", optional = tru
 #egui-d3d11 = { path = "../egui-d3d11", optional = true}
 
 [target."cfg(not(target_os = \"windows\"))".dependencies]
-notify-rust = "4.7"
 png = "0.17"
 
 [target."cfg(target_os = \"windows\")".dependencies]
@@ -89,8 +88,6 @@ features = [
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
     "Foundation_Collections",
-    "Data_Xml_Dom",
-    "UI_Notifications",
     "implement"
 ]
 
