@@ -33,6 +33,7 @@ tracing-error = "0.2"
 #tokio = { version = "1", features = ["full"]}
 
 directories-next = "2"
+dunce = "1"
 serde = { version = "1", features = ["derive"] }
 ron = "0.8"
 
@@ -53,6 +54,7 @@ async-hid = { git = "https://github.com/sidit77/async-hid.git"}
 #async-hid = {path = "../async-hid"}
 
 betrayer = { git = "https://github.com/sidit77/betrayer.git" }
+auto-launch = "0.5"
 
 egui = "0.23"
 raw-window-handle = "0.5"
@@ -70,9 +72,6 @@ egui-d3d11 = { git = "https://github.com/sidit77/egui-d3d11.git", optional = tru
 [target."cfg(not(target_os = \"windows\"))".dependencies]
 png = "0.17"
 
-[target."cfg(target_os = \"windows\")".dependencies]
-winreg = "0.52"
-dunce = "1"
 
 [target."cfg(target_os = \"windows\")".dependencies.windows]
 version = "0.52"

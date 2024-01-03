@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use auto_launch::AutoLaunch;
 
 use hc_foundation::Result;
 use directories_next::BaseDirs;
@@ -161,3 +162,22 @@ pub static START_QUIET: Lazy<bool> = Lazy::new(|| std::env::args().any(|arg| arg
 pub static CLOSE_IMMEDIATELY: Lazy<bool> = Lazy::new(|| std::env::args().any(|arg| arg.eq("--close-on-quit")));
 pub static DUMMY_DEVICE: Lazy<bool> = Lazy::new(|| std::env::args().any(|arg| arg.eq("--dummy-device")));
 pub static PRINT_UDEV_RULES: Lazy<bool> = Lazy::new(|| std::env::args().any(|arg| arg.eq("--print-udev-rules")));
+
+pub static AUTO_START: Lazy<Option<AutoLaunch>> = Lazy::new(|| {
+    std::env::current_exe()
+        .and_then(dunce::canonicalize)
+        .map_err(|err| tracing::warn!("Autostart: failed to find program location: {}", err))
+        .and_then(|path| path
+            .to_str()
+            .map(String::from)
+            .ok_or_else(|| tracing::warn!("Autostart: failed to convert program path to utf-8")))
+        .and_then(|path| auto_launch::AutoLaunchBuilder::new()
+            .set_app_name("headset-controller")
+            .set_app_path(&path)
+            .set_use_launch_agent(true)
+            .set_args(&["--quiet"])
+            .build()
+            .map_err(|err| tracing::warn!("Autostart: failed to build manager: {}", err))
+        )
+        .ok()
+});

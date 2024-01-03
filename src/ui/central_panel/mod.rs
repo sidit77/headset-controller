@@ -1,10 +1,11 @@
 mod headset;
 mod profile;
 
+use std::sync::atomic::{AtomicU8, Ordering};
 use egui::*;
 use tracing::instrument;
 
-use crate::config::Config;
+use crate::config::{AUTO_START, Config};
 use crate::debouncer::{Action, ActionProxy, ActionSender};
 use crate::devices::Device;
 use crate::ui::central_panel::headset::headset_section;
@@ -59,17 +60,26 @@ pub fn central_panel(ui: &mut Ui, sender: &mut ActionProxy, config: &mut Config,
             }
         });
         ui.add_space(10.0);
-        #[cfg(target_os = "windows")]
-        {
-            let mut auto_start = autostart::is_enabled()
-                .map_err(|err| tracing::warn!("Can not get autostart status: {}", err))
-                .unwrap_or(false);
+        if let Some(manager) = AUTO_START.as_ref() {
+            static CACHED_AUTOSTART: AtomicU8 = AtomicU8::new(2);
+            let mut auto_start = match CACHED_AUTOSTART.load(Ordering::Acquire) {
+                0 => false,
+                1 => true,
+                _ => {
+                    let v = manager.is_enabled()
+                        .map_err(|err| tracing::warn!("Can not get autostart status: {}", err))
+                        .unwrap_or(false);
+                    CACHED_AUTOSTART.store(v.into(), Ordering::Release);
+                    v
+                }
+            };
             if ui.checkbox(&mut auto_start, "Run On Startup").changed() {
                 if auto_start {
-                    autostart::enable().unwrap_or_else(|err| tracing::warn!("Can not enable auto start: {:?}", err));
+                    manager.enable().unwrap_or_else(|err| tracing::warn!("Can not enable auto start: {:?}", err));
                 } else {
-                    autostart::disable().unwrap_or_else(|err| tracing::warn!("Can not disable auto start: {:?}", err));
+                    manager.disable().unwrap_or_else(|err| tracing::warn!("Can not disable auto start: {:?}", err));
                 }
+                CACHED_AUTOSTART.store(2, Ordering::Release);
             }
         }
 
@@ -90,61 +100,3 @@ pub fn central_panel(ui: &mut Ui, sender: &mut ActionProxy, config: &mut Config,
     });
 }
 
-#[cfg(target_os = "windows")]
-mod autostart {
-    use std::ffi::OsString;
-
-    use hc_foundation::Result;
-    use winreg::enums::HKEY_CURRENT_USER;
-    use winreg::types::FromRegValue;
-    use winreg::RegKey;
-
-    fn directory() -> Result<RegKey> {
-        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        let (key, _) = hkcu.create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run")?;
-        Ok(key)
-    }
-
-    fn reg_key() -> &'static str {
-        "HeadsetController"
-    }
-
-    fn start_cmd() -> Result<OsString> {
-        let mut cmd = OsString::from("\"");
-        let exe_dir = dunce::canonicalize(std::env::current_exe()?)?;
-        cmd.push(exe_dir);
-        cmd.push("\"  --quiet");
-        Ok(cmd)
-    }
-
-    pub fn is_enabled() -> Result<bool> {
-        let cmd = start_cmd()?;
-        let result = directory()?
-            .enum_values()
-            .filter_map(|r| {
-                r.map_err(|err| tracing::warn!("Problem enumerating registry key: {}", err))
-                    .ok()
-            })
-            .any(|(key, value)| {
-                key.eq(reg_key())
-                    && OsString::from_reg_value(&value)
-                        .map_err(|err| tracing::warn!("Can not decode registry value: {}", err))
-                        .map(|v| v.eq(&cmd))
-                        .unwrap_or(false)
-            });
-        Ok(result)
-    }
-
-    pub fn enable() -> Result<()> {
-        let key = directory()?;
-        let cmd = start_cmd()?;
-        key.set_value(reg_key(), &cmd)?;
-        Ok(())
-    }
-
-    pub fn disable() -> Result<()> {
-        let key = directory()?;
-        key.delete_value(reg_key())?;
-        Ok(())
-    }
-}
